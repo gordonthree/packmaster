@@ -242,15 +242,17 @@ static const int spiClk = 250000; // 250 kHz?
 SPIClass * vspi = NULL;
 uint8_t slaveRecv = 0;
 
-void spiCommand(SPIClass *spi, byte data) {}
-
 void setup(void)
 {
+  Serial.begin(115200);
+  Serial.println("Booting");
+
   // to use DMA buffer, use these methods to allocate buffer
   spi_master_tx_buf = master.allocDMABuffer(BUFFER_SIZE);
   spi_master_rx_buf = master.allocDMABuffer(BUFFER_SIZE);
 
   set_buffer();
+  Serial.println("SPI Buffers Initialized");
 
   master.setDataMode(SPI_MODE0);           // default: SPI_MODE0
   master.setFrequency(100000);            // default: 8MHz (too fast for bread board...)
@@ -258,19 +260,18 @@ void setup(void)
 
   // begin() after setting
   master.begin();  // default: HSPI (CS: 15, CLK: 14, MOSI: 13, MISO: 12)
-  
-  Serial.begin(115200);
+  Serial.println("SPI master init complete");
+
   Wire.begin();
 
   //vspi = new SPIClass(VSPI);
   
   //vspi->begin(VSPI_SCLK, VSPI_MISO, VSPI_MOSI, VSPI_SS); //SCLK, MISO, MOSI, SS
   
-  Serial.println("Booting");
   
   //set up slave select pins as outputs as the Arduino API
   //doesn't handle automatically pulling SS low
-  pinMode(vspi->pinSS(), OUTPUT); //VSPI SS
+  // pinMode(vspi->pinSS(), OUTPUT); //VSPI SS
   
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
@@ -484,26 +485,4 @@ void loop(void)
   }
 }
 
-void spiCommand(SPIClass *spi, byte data) {
-  byte recv = 0;
-  //use it as you would the regular arduino SPI API
-  spi->beginTransaction(SPISettings(spiClk, MSBFIRST, SPI_MODE0));
-  digitalWrite(spi->pinSS(), LOW); //pull SS slow to prep other end for transfer
-  delayMicroseconds(50); /// wait an entire ms for the slave
-  
-  spi->transfer(data); // send data
-
-  recv << spi->transfer(0xff); // send dummy byte
-  
-  delayMicroseconds(50); /// wait an entire ms for the slave
-  digitalWrite(spi->pinSS(), HIGH); //pull ss high to signify end of data transfer
-
-  spi->endTransaction();
-
-  sprintf(buff, "Sent: %u Recv: %u", data, recv);
-  Serial.print(buff);
-
-  display.setCursor(0, 16);     // Start at top-left corner    
-  display.println(buff);
-}
 
