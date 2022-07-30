@@ -98,13 +98,15 @@ void loop() {
   ArduinoOTA.handle();
   
   if (nextPing) {
+    /*
     Wire.requestFrom(I2C_SLAVE, 6);    // request 6 bytes from slave device #8
 
     while (Wire.available()) { // slave may send less than requested
       char c = Wire.read(); // receive a byte as character
       Serial.print(c);         // print the character
     }
-
+    */
+   
     // now try writing some data
     Wire.beginTransmission(I2C_SLAVE);   // begin transaction with slave address
     //Wire.write(0x00);                    // register address
