@@ -24,6 +24,7 @@ String newHostname = "packmaster";
 void setup() {
   Serial.begin(115200);  // start serial for output
   Wire.begin(SDA_PIN, SCL_PIN, I2C_MASTER);        // join i2c bus (address optional for master)
+  Wire.setClock(100000);  // 100khz clock
   
   delay(2000);
   
@@ -89,38 +90,6 @@ void setup() {
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
   
-  byte error, address;
-  int nDevices;
- 
-  Serial.println("Scanning...");
- 
-  nDevices = 0;
-  for(address = 1; address < 127; address++ )
-  {
-    // The i2c_scanner uses the return value of
-    // the Write.endTransmisstion to see if
-    // a device did acknowledge to the address.
-    Wire.beginTransmission(address);
-    error = Wire.endTransmission();
- 
-    if (error == 0)
-    {
-      Serial.print("I2C device found at address 0x");
-      if (address<16)
-        Serial.print("0");
-      Serial.print(address,HEX);
-      Serial.println("  !");
- 
-      nDevices++;
-    }
-    else if (error==4)
-    {
-      Serial.print("Unknown error at address 0x");
-      if (address<16)
-        Serial.print("0");
-      Serial.println(address,HEX);
-    }    
-  }    
 }
 
 void loop() {
@@ -135,6 +104,16 @@ void loop() {
       char c = Wire.read(); // receive a byte as character
       Serial.print(c);         // print the character
     }
+
+    // now try writing some data
+    Wire.beginTransmission(I2C_SLAVE);   // begin transaction with slave address
+    //Wire.write(0x00);                    // register address
+    Wire.write("1");                     // send some data
+    Wire.write("0");                     // send some data
+    Wire.write("2");                     // send some data
+    Wire.write("4");                     // send some data
+    Wire.endTransmission();              // end transaction
+
   }
 }
 
