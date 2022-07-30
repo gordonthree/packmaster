@@ -1,11 +1,13 @@
 #include <Arduino.h>
-
 #include <Wire.h>
 #include <PolledTimeout.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
+#include "ESPTelnet.h"          
+
+#define SERIAL_SPEED 115200
 
 #define SDA_PIN 4
 #define SCL_PIN 5
@@ -20,6 +22,76 @@ const int16_t I2C_MASTER = 0x42;
 const int16_t I2C_SLAVE = 0x37;
 
 String newHostname = "packmaster";
+
+ESPTelnet telnet;
+IPAddress ip;
+uint16_t  port = 23;
+
+void onTelnetConnect(String ip) {
+  Serial.print("- Telnet: ");
+  Serial.print(ip);
+  Serial.println(" connected");
+  telnet.println("\nWelcome " + telnet.getIP());
+  telnet.println("(Use ^] + q  to disconnect.)");
+}
+
+void onTelnetDisconnect(String ip) {
+  Serial.print("- Telnet: ");
+  Serial.print(ip);
+  Serial.println(" disconnected");
+}
+
+void onTelnetReconnect(String ip) {
+  Serial.print("- Telnet: ");
+  Serial.print(ip);
+  Serial.println(" reconnected");
+}
+
+void onTelnetConnectionAttempt(String ip) {
+  Serial.print("- Telnet: ");
+  Serial.print(ip);
+  Serial.println(" tried to connected");
+}
+
+void errorMsg(String error, bool restart = true) {
+  Serial.println(error);
+  if (restart) {
+    Serial.println("Rebooting now...");
+    delay(2000);
+    ESP.restart();
+    delay(2000);
+  }
+}
+
+
+void setupTelnet() {  
+  // passing on functions for various telnet events
+  telnet.onConnect(onTelnetConnect);
+  telnet.onConnectionAttempt(onTelnetConnectionAttempt);
+  telnet.onReconnect(onTelnetReconnect);
+  telnet.onDisconnect(onTelnetDisconnect);
+  
+  // passing a lambda function
+  telnet.onInputReceived([](String str) {
+    // checks for a certain command
+    if (str == "ping") {
+      telnet.println("> pong");
+      Serial.println("- Telnet: pong");
+    // disconnect the client
+    } else if (str == "bye") {
+      telnet.println("> disconnecting you...");
+      telnet.disconnectClient();
+      }
+  });
+
+  Serial.print("- Telnet: ");
+  if (telnet.begin(port)) {
+    Serial.println("running");
+  } else {
+    Serial.println("error.");
+    errorMsg("Will reboot...");
+  }
+}
 
 void setup() {
   Serial.begin(115200);  // start serial for output
@@ -41,18 +113,7 @@ void setup() {
     ESP.restart();
   }
 
-  // Port defaults to 8266
-  // ArduinoOTA.setPort(8266);
-
-  // Hostname defaults to esp8266-[ChipID]
-  // ArduinoOTA.setHostname("myesp8266");
-
-  // No authentication by default
-  // ArduinoOTA.setPassword("admin");
-
-  // Password can be set with it's md5 value as well
-  // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
-  // ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
+  setupTelnet();
 
   ArduinoOTA.onStart([]() {
     String type;
@@ -93,28 +154,34 @@ void setup() {
 }
 
 void loop() {
+  telnet.loop();
   using periodic = esp8266::polledTimeout::periodicMs;
   static periodic nextPing(1000);
   ArduinoOTA.handle();
   
   if (nextPing) {
-    /*
-    Wire.requestFrom(I2C_SLAVE, 6);    // request 6 bytes from slave device #8
+    
+    telnet.print("RX: ");
+    Wire.requestFrom(I2C_SLAVE, 6);                   // request 6 bytes from slave device followed by a stop condition
 
-    while (Wire.available()) { // slave may send less than requested
-      char c = Wire.read(); // receive a byte as character
-      Serial.print(c);         // print the character
+    while (Wire.available()) {                        // slave may send less than requested
+      char c = Wire.read();                           // receive a byte as character
+      telnet.print(c);                                // print the character
     }
-    */
-   
+
+    telnet.println(" RX complete.");
+
+    telnet.print("TX: ");
     // now try writing some data
-    Wire.beginTransmission(I2C_SLAVE);   // begin transaction with slave address
-    //Wire.write(0x00);                    // register address
-    Wire.write("1");                     // send some data
-    Wire.write("0");                     // send some data
-    Wire.write("2");                     // send some data
-    Wire.write("4");                     // send some data
-    Wire.endTransmission();              // end transaction
+    Wire.beginTransmission(I2C_SLAVE);                // begin transaction with slave address
+    //Wire.write(0x00);                               // register address
+    Wire.write("1");                                  // send some data
+    Wire.write("0");                                  // send some data
+    Wire.write("2");                                  // send some data
+    Wire.write("4");                                  // send some data
+    uint8_t tx = Wire.endTransmission(true);          // end transaction with a stop
+    telnet.print("status ");
+    telnet.println(tx);
 
   }
 }
