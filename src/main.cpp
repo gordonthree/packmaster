@@ -6,6 +6,8 @@
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 #include "ESPTelnet.h"          
+#include <time.h>
+#include "TimeLib.h"
 
 #define SERIAL_SPEED 115200
 
@@ -18,89 +20,50 @@
 const char* ssid = STASSID;
 const char* password = STAPSK;
 
-const int16_t I2C_MASTER = 0x42;
-const int16_t I2C_SLAVE = 0x37;
+const char* ntpServerName = "pool.ntp.org";   // NTP server name
+const long  gmtOffset_sec = -14400;            //Replace with your GMT offset (seconds)
+const int   daylightOffset_sec = 0;        //Replace with your daylight offset (seconds)
+
+const uint8_t I2C_MASTER = 0x42;
+const uint8_t I2C_SLAVE = 0x37;
 
 String newHostname = "packmaster";
 
-IPAddress timeServerIP;          // time.nist.gov NTP server address
+IPAddress ntpServerIP;          // time.nist.gov NTP server address
 
-const char* NTPServerName = "us.pool.ntp.org";
-const int NTP_PACKET_SIZE = 48;  // NTP time stamp is in the first 48 bytes of the message
-
-byte NTPBuffer[NTP_PACKET_SIZE]; // buffer to hold incoming and outgoing packets
-
-WiFiUDP UDP;                     // Create an instance of the WiFiUDP class to send and receive
 ESPTelnet telnet;
 IPAddress ip;
 uint16_t  port = 23;
 
-unsigned long intervalNTP = 60000; // Request NTP time every minute
-unsigned long prevNTP = 0;
-unsigned long lastNTPResponse = millis();
-uint32_t timeUNIX = 0;
 
-unsigned long prevActualTime = 0;
-
-void startUDP() {
-  Serial.println("Starting UDP");
-  UDP.begin(123);                          // Start listening for UDP messages on port 123
-  Serial.print("Local port:\t");
-  Serial.println(UDP.localPort());
-  Serial.println();
+void printLocalTime()
+{
+  time_t rawtime;
+  struct tm * timeinfo;
+  time (&rawtime);
+  timeinfo = localtime (&rawtime);
+  Serial.println(asctime(timeinfo));
+  delay(1000);
 }
 
-uint32_t getTime() {
-  if (UDP.parsePacket() == 0) { // If there's no response (yet)
-    return 0;
-  }
-  UDP.read(NTPBuffer, NTP_PACKET_SIZE); // read the packet into the buffer
-  // Combine the 4 timestamp bytes into one 32-bit number
-  uint32_t NTPTime = (NTPBuffer[40] << 24) | (NTPBuffer[41] << 16) | (NTPBuffer[42] << 8) | NTPBuffer[43];
-  // Convert NTP time to a UNIX timestamp:
-  // Unix time starts on Jan 1 1970. That's 2208988800 seconds in NTP time:
-  const uint32_t seventyYears = 2208988800UL;
-  // subtract seventy years:
-  uint32_t UNIXTime = NTPTime - seventyYears;
-  return UNIXTime;
-}
-
-void sendNTPpacket(IPAddress& address) {
-  memset(NTPBuffer, 0, NTP_PACKET_SIZE);  // set all bytes in the buffer to 0
-  // Initialize values needed to form NTP request
-  NTPBuffer[0] = 0b11100011;   // LI, Version, Mode
-  // send a packet requesting a timestamp:
-  UDP.beginPacket(address, 123); // NTP requests are to port 123
-  UDP.write(NTPBuffer, NTP_PACKET_SIZE);
-  UDP.endPacket();
-}
-
-inline int getSeconds(uint32_t UNIXTime) {
-  return UNIXTime % 60;
-}
-
-inline int getMinutes(uint32_t UNIXTime) {
-  return UNIXTime / 60 % 60;
-}
-
-inline int getHours(uint32_t UNIXTime) {
-  return UNIXTime / 3600 % 24;
+void telnetLocalTime()
+{
+  time_t rawtime;
+  struct tm * timeinfo;
+  time (&rawtime);
+  timeinfo = localtime (&rawtime);
+  telnet.println(asctime(timeinfo));
 }
 
 void onTelnetConnect(String ip) {
-  Serial.print("- Telnet: ");
+  Serial.print("Telnet connection from ");
   Serial.print(ip);
-  Serial.println(" connected");
-  telnet.println("\nWelcome " + telnet.getIP());
+  Serial.println(" connected!");
+
+  telnet.println("\n\nWelcome " + telnet.getIP());
   telnet.println("(Use ^] + q  to disconnect.)");
 
-  uint32_t time = getTime();                   // Check if an NTP response has arrived and get the (UNIX) time
-
-  if (time) {                                  // If a new timestamp has been received
-    timeUNIX = time;
-    telnet.print("NTP response: ");
-    telnet.println(timeUNIX);
-  }
+  telnetLocalTime();
 }
 
 void onTelnetDisconnect(String ip) {
@@ -168,7 +131,7 @@ void setup() {
   
   delay(2000);
   
-  Serial.println("\n\fBooting");
+  Serial.println("\n\nBooting");
   
   WiFi.mode(WIFI_STA);
   WiFi.hostname(newHostname.c_str());
@@ -183,18 +146,18 @@ void setup() {
 
   setupTelnet();
 
-  startUDP();
-
-  if(!WiFi.hostByName(NTPServerName, timeServerIP)) { // Get the IP address of the NTP server
-    telnet.println("DNS lookup failed.");
+  if(!WiFi.hostByName(ntpServerName, ntpServerIP)) { // Get the IP address of the NTP server
+    Serial.println("DNS lookup failed.");
     //Serial.flush();
     //ESP.reset();
   } else {
-    telnet.print("Time server IP:\t");
-    telnet.println(timeServerIP);
+    Serial.print("Time server IP: ");
+    Serial.println(ntpServerIP);
     
-    telnet.println("\r\nSending NTP request ...");
-    sendNTPpacket(timeServerIP); 
+  //init and get the time
+    Serial.println("Sending NTP request ...");
+    configTime(gmtOffset_sec, daylightOffset_sec, ntpServerName);
+    printLocalTime();
   }
 
   ArduinoOTA.onStart([]() {
@@ -243,17 +206,7 @@ void loop() {
   ArduinoOTA.handle();
 
   if (nextPing) {
-    uint32_t time = getTime();                   // Check if an NTP response has arrived and get the (UNIX) time
-    
-    if (time) {                                  // If a new timestamp has been received
-      timeUNIX = time;
-      telnet.print("NTP response: ");
-      telnet.println(timeUNIX);
-      lastNTPResponse = currentMillis;
-    } else if ((currentMillis - lastNTPResponse) > 3600000) {
-      telnet.println("Sending NTP request ...");
-      sendNTPpacket(timeServerIP);               // Send an NTP request
-    }
+    telnet.println(now()); // print timestamp
 
     telnet.print("RX: ");
     Wire.requestFrom(I2C_SLAVE, 6);                   // request 6 bytes from slave device followed by a stop condition
