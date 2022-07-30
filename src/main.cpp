@@ -171,18 +171,22 @@ void loop() {
 
     telnet.println(" RX complete.");
 
+
     telnet.print("TX: ");
     // now try writing some data
     Wire.beginTransmission(I2C_SLAVE);                // begin transaction with slave address
-    //Wire.write(0x00);                               // register address
-    Wire.write("1");                                  // send some data
-    Wire.write("0");                                  // send some data
-    Wire.write("2");                                  // send some data
-    Wire.write("4");                                  // send some data
-    uint8_t tx = Wire.endTransmission(true);          // end transaction with a stop
-    telnet.print("status ");
-    telnet.println(tx);
+    Wire.write(0x21);                                 // register address
+    Wire.endTransmission(true);                       // end transaction with a stop
 
+    Wire.beginTransmission(I2C_SLAVE);                // begin transaction with slave address
+    Wire.write(0x32);                                 // register address
+    Wire.write("Hello!");                             // send some data
+    Wire.endTransmission(true);                       // end transaction with a stop
+    
+    Wire.beginTransmission(I2C_SLAVE);                // begin transaction with slave address
+    Wire.write(0x20);                                 // register address
+    Wire.endTransmission(true);                       // end transaction with a stop
+    telnet.println("complete.");
   }
 }
 
