@@ -230,17 +230,20 @@ void loop() {
   if (nextPing) {
     loopCnt++;                                        // increment loop counter
     uint32 timeNow = sntp_get_current_timestamp();    // get unix style timestamp from ntp provider
-    // telnetLocalTime();                                // print the current time
-    sprintf(buff, "timestamp = %u", timeNow);
+    // telnetLocalTime();                             // print the current time
+    sprintf(buff, "My Timestamp: %u", timeNow);
     telnet.println(buff);
 
-    telnet.print("RX: ");
-    Wire.requestFrom(I2C_SLAVE, 6);                   // request 6 bytes from slave device followed by a stop condition
+    telnet.print("Slave Timestamp: ");
+    Wire.beginTransmission(I2C_SLAVE);                // start transaction
+    Wire.write(0x62);                                 // tell slave we want to read this register
+    Wire.endTransmission(false);                      // send instruction, retain control of bus
+    Wire.requestFrom(I2C_SLAVE, 10, true);            // request 6 bytes from slave device and then release bus
     while (Wire.available()) {                        // slave may send less than requested
       char c = Wire.read();                           // receive a byte as character
       telnet.print(c);                                // print the character
     }
-    telnet.println(" RX complete.");
+    telnet.println();
 
 
     // now try writing some data
@@ -255,19 +258,20 @@ void loop() {
       Wire.write(buff);                                   // send time packet populated above
       Wire.endTransmission(true);                         // end transaction with a stop
       lasttimeSync = timeStamp;                           // update last sync timestamp
+      telnet.println("Updated time on slave.");
     }
 
     Wire.beginTransmission(I2C_SLAVE);                // begin transaction with slave address
-    Wire.write(0x31);                                 // register address
+    Wire.write(0x2E);                                 // register address
     Wire.endTransmission(true);                       // end transaction with a stop
 
     Wire.beginTransmission(I2C_SLAVE);                // begin transaction with slave address
-    Wire.write(0x32);                                 // register address
+    Wire.write(0x3F);                                 // register address
     Wire.write("Hello!");                             // send some data
     Wire.endTransmission(true);                       // end transaction with a stop
     
     Wire.beginTransmission(I2C_SLAVE);                // begin transaction with slave address
-    Wire.write(0x30);                                 // register address
+    Wire.write(0x2F);                                 // register address
     Wire.endTransmission(true);                       // end transaction with a stop
     telnet.println("complete.\n");
   }
