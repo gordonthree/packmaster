@@ -41,6 +41,12 @@ time_t lasttimeSync = 0;                      // when did we last send slaves th
 uint16_t timesyncInterval = 600;              // sync time every 600 seconds, 10 minutes
 char buff[100];
 
+volatile bool readTimestamps = false;
+volatile bool readUptimes    = false;
+volatile bool readVBus       = false;
+volatile bool readVPack      = false;
+volatile bool readIPack      = false;
+
 void printLocalTime()
 {
   time_t rawtime;
@@ -114,7 +120,18 @@ void setupTelnet() {
       telnet.println("> pong");
       Serial.println("- Telnet: pong");
     // disconnect the client
+    } else if (str == "ts") {
+      readTimestamps = readTimestamps ^ 1;
+    } else if (str == "up") {
+      readUptimes = readUptimes ^ 1;
+    } else if (str == "vbus") {
+      readVBus = readVBus ^ 1;
+    } else if (str == "vpack") {
+      readVPack = readVPack ^ 1;
+    } else if (str == "ipack") {
+      readIPack = readIPack ^ 1;
     } else if (str == "bye") {
+
       telnet.println("> disconnecting you...");
       telnet.disconnectClient();
       }
@@ -220,6 +237,11 @@ union I2C_timePacket_t{
   byte I2CPacket[timeUnion_size];
 };
 
+void readAndprint(uint8_t myAddr, uint8_t byteCnt){
+  
+}
+
+
 void loop() {
   telnet.loop();
   using periodic = esp8266::polledTimeout::periodicMs;
@@ -231,23 +253,92 @@ void loop() {
     loopCnt++;                                        // increment loop counter
     uint32 timeNow = sntp_get_current_timestamp();    // get unix style timestamp from ntp provider
     // telnetLocalTime();                             // print the current time
-    sprintf(buff, "My Timestamp: %u", timeNow);
-    telnet.println(buff);
 
-    telnet.print("Slave Timestamp: ");
-    Wire.beginTransmission(I2C_SLAVE);                // start transaction
-    Wire.write(0x62);                                 // tell slave we want to read this register
-    Wire.endTransmission(false);                      // send instruction, retain control of bus
-    Wire.requestFrom(I2C_SLAVE, 10, true);            // request 6 bytes from slave device and then release bus
-    while (Wire.available()) {                        // slave may send less than requested
-      char c = Wire.read();                           // receive a byte as character
-      telnet.print(c);                                // print the character
+    if (readTimestamps) {
+      uint8_t byteCnt = 0;
+      uint8_t readBytes = 10;
+      sprintf(buff, "My Timestamp: %u", timeNow);
+      telnet.println(buff);
+
+      telnet.print("Slave Timestamp: ");
+      Wire.beginTransmission(I2C_SLAVE);                // start transaction
+      Wire.write(0x62);                                 // tell slave we want to read this register
+      Wire.endTransmission(false);                      // send instruction, retain control of bus
+      Wire.requestFrom(I2C_SLAVE, readBytes, true);            // request 6 bytes from slave device and then release bus
+      while (Wire.available() && byteCnt<readBytes) {          // slave may send less than requested
+        char c = Wire.read();                           // receive a byte as character
+        telnet.print(c);                                // print the character
+        byteCnt++;
+      }
+      telnet.println();
+      readTimestamps = false;
     }
-    telnet.println();
 
+    if (readUptimes) {
+      uint8_t byteCnt = 0;
+      uint8_t readBytes = 10;
+      telnet.print("Up: ");
+      Wire.beginTransmission(I2C_SLAVE);                // start transaction
+      Wire.write(0x64);                                 // tell slave we want to read this register
+      Wire.endTransmission(false);                      // send instruction, retain control of bus
+      Wire.requestFrom(I2C_SLAVE, readBytes, true);            // request 6 bytes from slave device and then release bus
+      while (Wire.available() && byteCnt<readBytes) {          // slave may send less than requested
+        char c = Wire.read();                           // receive a byte as character
+        telnet.print(c);                                // print the character
+        byteCnt++;
+      }
+      telnet.println();
+    }
 
+    if (readVBus) {
+      uint8_t byteCnt = 0;
+      uint8_t readBytes = 5;
+      telnet.print("Vbus: ");
+      Wire.beginTransmission(I2C_SLAVE);                // start transaction
+      Wire.write(0x3E);                                 // tell slave we want to read this register
+      Wire.endTransmission(false);                      // send instruction, retain control of bus
+      Wire.requestFrom(I2C_SLAVE, readBytes, true);            // request 6 bytes from slave device and then release bus
+      while (Wire.available() && byteCnt<readBytes) {          // slave may send less than requested
+        char c = Wire.read();                           // receive a byte as character
+        telnet.print(c);                                // print the character
+        byteCnt++;
+      }
+      telnet.println();
+    }
+
+    if (readVPack) {
+      uint8_t byteCnt = 0;
+      uint8_t readBytes = 5;
+
+      telnet.print("Vpack: ");
+      Wire.beginTransmission(I2C_SLAVE);                // start transaction
+      Wire.write(0x39);                                 // tell slave we want to read this register
+      Wire.endTransmission(false);                      // send instruction, retain control of bus
+      Wire.requestFrom(I2C_SLAVE, readBytes, true);            // request 6 bytes from slave device and then release bus
+      while (Wire.available() && byteCnt<readBytes) {          // slave may send less than requested
+        char c = Wire.read();                           // receive a byte as character
+        telnet.print(c);                                // print the character
+      }
+      telnet.println();
+    }
+
+    if (readIPack) {
+      uint8_t byteCnt = 0;
+      uint8_t readBytes = 5;
+
+      telnet.print("Ipack: ");
+      Wire.beginTransmission(I2C_SLAVE);                // start transaction
+      Wire.write(0x33);                                 // tell slave we want to read this register
+      Wire.endTransmission(false);                      // send instruction, retain control of bus
+      Wire.requestFrom(I2C_SLAVE, readBytes, true);            // request 6 bytes from slave device and then release bus
+      while (Wire.available() && byteCnt<readBytes) {          // slave may send less than requested
+        char c = Wire.read();                           // receive a byte as character
+        telnet.print(c);                                // print the character
+      }
+      telnet.println();
+    }
     // now try writing some data
-    telnet.print("TX: ");
+    //telnet.print("TX: ");
 
     uint32_t timeStamp = sntp_get_current_timestamp();  // grab most rececnt timestamp
     ltoa(timeStamp, buff, 10);                          // convert timestamp into C string
@@ -273,7 +364,7 @@ void loop() {
     Wire.beginTransmission(I2C_SLAVE);                // begin transaction with slave address
     Wire.write(0x2F);                                 // register address
     Wire.endTransmission(true);                       // end transaction with a stop
-    telnet.println("complete.\n");
+    //telnet.println("complete.\n");
   }
 }
 
