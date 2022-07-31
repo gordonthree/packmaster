@@ -208,7 +208,7 @@ void setup() {
 
 struct timeArray_t{
   byte regAddr;
-  uint32 timeStamp;
+  uint32_t timeStamp;
 };
 
 const uint8_t timeUnion_size = sizeof(timeArray_t);
