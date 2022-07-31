@@ -8,6 +8,7 @@
 #include "ESPTelnet.h"          
 #include <time.h>
 #include "TimeLib.h"
+#include "sntp.h"
 
 #define SERIAL_SPEED 115200
 
@@ -34,7 +35,9 @@ IPAddress ntpServerIP;          // time.nist.gov NTP server address
 ESPTelnet telnet;
 IPAddress ip;
 uint16_t  port = 23;
+uint16_t  loopCnt = 0;          // loop counter to update slave time
 
+char buff[100];
 
 void printLocalTime()
 {
@@ -124,6 +127,10 @@ void setupTelnet() {
   }
 }
 
+void syncProvider() {
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServerName);
+}
+
 void setup() {
   Serial.begin(115200);  // start serial for output
   Wire.begin(SDA_PIN, SCL_PIN, I2C_MASTER);        // join i2c bus (address optional for master)
@@ -157,6 +164,7 @@ void setup() {
   //init and get the time
     Serial.println("Sending NTP request ...");
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServerName);
+    //setSyncInterval(600);
     printLocalTime();
   }
 
@@ -198,31 +206,57 @@ void setup() {
   
 }
 
+struct timeArray_t{
+  byte regAddr;
+  uint32 timeStamp;
+};
+
+const uint8_t timeUnion_size = sizeof(timeArray_t);
+
+union I2C_timePacket_t{
+  timeArray_t currentTime;
+  byte I2CPacket[timeUnion_size];
+};
+
 void loop() {
-  unsigned long currentMillis = millis();
   telnet.loop();
   using periodic = esp8266::polledTimeout::periodicMs;
   static periodic nextPing(1000);
+
   ArduinoOTA.handle();
 
   if (nextPing) {
-    telnet.println(now()); // print timestamp
+    loopCnt++;                                        // increment loop counter
+    uint32 timeNow = sntp_get_current_timestamp();    // get unix style timestamp from ntp provider
+    // telnetLocalTime();                                // print the current time
+    sprintf(buff, "timestamp = %u", timeNow);
+    telnet.println(buff);
 
     telnet.print("RX: ");
     Wire.requestFrom(I2C_SLAVE, 6);                   // request 6 bytes from slave device followed by a stop condition
-
     while (Wire.available()) {                        // slave may send less than requested
       char c = Wire.read();                           // receive a byte as character
       telnet.print(c);                                // print the character
     }
-
     telnet.println(" RX complete.");
 
 
-    telnet.print("TX: ");
     // now try writing some data
+    telnet.print("TX: ");
+
+    I2C_timePacket_t txData;
+    txData.currentTime.regAddr = 0x20;
+    txData.currentTime.timeStamp = sntp_get_current_timestamp();
+
+
+    Wire.beginTransmission(I2C_SLAVE);              // begin transaction with slave address
+    Wire.write(txData.currentTime.regAddr);                             // send time packet populated above
+    Wire.write(txData.I2CPacket, timeUnion_size - 1);                             // send time packet populated above
+    Wire.endTransmission(true);                     // end transaction with a stop
+    //loopCnt = 1;
+
     Wire.beginTransmission(I2C_SLAVE);                // begin transaction with slave address
-    Wire.write(0x21);                                 // register address
+    Wire.write(0x31);                                 // register address
     Wire.endTransmission(true);                       // end transaction with a stop
 
     Wire.beginTransmission(I2C_SLAVE);                // begin transaction with slave address
@@ -231,9 +265,9 @@ void loop() {
     Wire.endTransmission(true);                       // end transaction with a stop
     
     Wire.beginTransmission(I2C_SLAVE);                // begin transaction with slave address
-    Wire.write(0x20);                                 // register address
+    Wire.write(0x30);                                 // register address
     Wire.endTransmission(true);                       // end transaction with a stop
-    telnet.println("complete.");
+    telnet.println("complete.\n");
   }
 }
 
