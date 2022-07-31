@@ -22,21 +22,23 @@ const char* ssid = STASSID;
 const char* password = STAPSK;
 
 const char* ntpServerName = "pool.ntp.org";   // NTP server name
-const long  gmtOffset_sec = -14400;            //Replace with your GMT offset (seconds)
-const int   daylightOffset_sec = 0;        //Replace with your daylight offset (seconds)
+const long  gmtOffset_sec = -14400;           //Replace with your GMT offset (seconds)
+const int   daylightOffset_sec = 0;           //Replace with your daylight offset (seconds)
 
 const uint8_t I2C_MASTER = 0x42;
 const uint8_t I2C_SLAVE = 0x37;
 
 String newHostname = "packmaster";
 
-IPAddress ntpServerIP;          // time.nist.gov NTP server address
+IPAddress ntpServerIP;                        // time.nist.gov NTP server address
 
 ESPTelnet telnet;
 IPAddress ip;
 uint16_t  port = 23;
-uint16_t  loopCnt = 0;          // loop counter to update slave time
+uint16_t  loopCnt = 0;                        // loop counter to update slave time
 
+time_t lasttimeSync = 0;                      // when did we last send slaves the time?
+uint16_t timesyncInterval = 600;              // sync time every 600 seconds, 10 minutes
 char buff[100];
 
 void printLocalTime()
@@ -244,16 +246,16 @@ void loop() {
     // now try writing some data
     telnet.print("TX: ");
 
-    I2C_timePacket_t txData;
-    txData.currentTime.regAddr = 0x20;
-    txData.currentTime.timeStamp = sntp_get_current_timestamp();
-
-
-    Wire.beginTransmission(I2C_SLAVE);              // begin transaction with slave address
-    Wire.write(txData.currentTime.regAddr);                             // send time packet populated above
-    Wire.write(txData.I2CPacket, timeUnion_size - 1);                             // send time packet populated above
-    Wire.endTransmission(true);                     // end transaction with a stop
-    //loopCnt = 1;
+    uint32_t timeStamp = sntp_get_current_timestamp();  // grab most rececnt timestamp
+    ltoa(timeStamp, buff, 10);                          // convert timestamp into C string
+    
+    if (timeStamp > lasttimeSync + timesyncInterval) {    // check to see if we need to refresh the time on slaves
+      Wire.beginTransmission(I2C_SLAVE);                  // begin transaction with slave address
+      Wire.write(0x60);                                   // send time packet populated above
+      Wire.write(buff);                                   // send time packet populated above
+      Wire.endTransmission(true);                         // end transaction with a stop
+      lasttimeSync = timeStamp;                           // update last sync timestamp
+    }
 
     Wire.beginTransmission(I2C_SLAVE);                // begin transaction with slave address
     Wire.write(0x31);                                 // register address
