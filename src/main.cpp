@@ -267,11 +267,14 @@ void loop() {
       Wire.requestFrom(I2C_SLAVE, readBytes, true);            // request 6 bytes from slave device and then release bus
       while (Wire.available() && byteCnt<readBytes) {          // slave may send less than requested
         char c = Wire.read();                           // receive a byte as character
-        telnet.print(c);                                // print the character
+        if (c<32) {
+          // byteCnt=readBytes;
+        } else {
+          telnet.print(c);                                // print the character
+        }
         byteCnt++;
       }
-      telnet.println();
-      readTimestamps = false;
+      telnet.println("");
     }
 
     if (readUptimes) {
@@ -284,10 +287,14 @@ void loop() {
       Wire.requestFrom(I2C_SLAVE, readBytes, true);            // request 6 bytes from slave device and then release bus
       while (Wire.available() && byteCnt<readBytes) {          // slave may send less than requested
         char c = Wire.read();                           // receive a byte as character
-        telnet.print(c);                                // print the character
+        if (c<32) {
+          // byteCnt=readBytes;
+        } else {
+          telnet.print(c);                                // print the character
+        }
         byteCnt++;
       }
-      telnet.println();
+      telnet.println("");
     }
 
     if (readVBus) {
@@ -300,10 +307,14 @@ void loop() {
       Wire.requestFrom(I2C_SLAVE, readBytes, true);            // request 6 bytes from slave device and then release bus
       while (Wire.available() && byteCnt<readBytes) {          // slave may send less than requested
         char c = Wire.read();                           // receive a byte as character
-        telnet.print(c);                                // print the character
+        if (c<32) {
+          // byteCnt=readBytes;
+        } else {
+          telnet.print(c);                                // print the character
+        }
         byteCnt++;
       }
-      telnet.println();
+      telnet.println("  vdc");
     }
 
     if (readVPack) {
@@ -317,9 +328,14 @@ void loop() {
       Wire.requestFrom(I2C_SLAVE, readBytes, true);            // request 6 bytes from slave device and then release bus
       while (Wire.available() && byteCnt<readBytes) {          // slave may send less than requested
         char c = Wire.read();                           // receive a byte as character
-        telnet.print(c);                                // print the character
+        if (c<32) {
+          // byteCnt=readBytes;
+        } else {
+          telnet.print(c);                                // print the character
+        }
+        byteCnt++;                                      // increment counter
       }
-      telnet.println();
+      telnet.println("  vdc");
     }
 
     if (readIPack) {
@@ -333,9 +349,14 @@ void loop() {
       Wire.requestFrom(I2C_SLAVE, readBytes, true);            // request 6 bytes from slave device and then release bus
       while (Wire.available() && byteCnt<readBytes) {          // slave may send less than requested
         char c = Wire.read();                           // receive a byte as character
-        telnet.print(c);                                // print the character
+        if (c<32) {
+          // byteCnt=readBytes;
+        } else {
+          telnet.print(c);                                // print the character
+        }
+        byteCnt++;                                      // increment counter
       }
-      telnet.println();
+      telnet.println(" amps");
     }
     // now try writing some data
     //telnet.print("TX: ");
@@ -356,10 +377,10 @@ void loop() {
     Wire.write(0x2E);                                 // register address
     Wire.endTransmission(true);                       // end transaction with a stop
 
-    Wire.beginTransmission(I2C_SLAVE);                // begin transaction with slave address
-    Wire.write(0x3F);                                 // register address
-    Wire.write("Hello!");                             // send some data
-    Wire.endTransmission(true);                       // end transaction with a stop
+    // Wire.beginTransmission(I2C_SLAVE);                // begin transaction with slave address
+    // Wire.write(0x3F);                                 // register address
+    // Wire.write("Hello!");                             // send some data
+    // Wire.endTransmission(true);                       // end transaction with a stop
     
     Wire.beginTransmission(I2C_SLAVE);                // begin transaction with slave address
     Wire.write(0x2F);                                 // register address
