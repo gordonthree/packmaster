@@ -326,6 +326,7 @@ void loop() {
   static periodic nextPing(1000);
   time_t timeStamp = now();
   ArduinoOTA.handle();
+  bool tickTock = false;
 
   if (timeStamp > lasttimeSync + timesyncInterval) {    // check to see if we need to refresh the time on slaves
     syncSlavetime();
@@ -446,19 +447,19 @@ void loop() {
     uint32_t timeStamp = sntp_get_current_timestamp();  // grab most rececnt timestamp
     ltoa(timeStamp, buff, 10);                          // convert timestamp into C string
     
-    Wire.beginTransmission(I2C_SLAVE);                // begin transaction with slave address
-    Wire.write(0x2E);                                 // register address
-    Wire.endTransmission(true);                       // end transaction with a stop
+    if (tickTock) {
+      Wire.beginTransmission(I2C_SLAVE);                // begin transaction with slave address
+      Wire.write(0x2E);                                 // register address
+      Wire.endTransmission(true);                       // end transaction with a stop
+      tickTock = false;
+    } else {
+      Wire.beginTransmission(I2C_SLAVE);                // begin transaction with slave address
+      Wire.write(0x2F);                                 // register address
+      Wire.endTransmission(true);                       // end transaction with a stop   
+      tickTock = true;
+    }                 
 
-    // Wire.beginTransmission(I2C_SLAVE);                // begin transaction with slave address
-    // Wire.write(0x3F);                                 // register address
-    // Wire.write("Hello!");                             // send some data
-    // Wire.endTransmission(true);                       // end transaction with a stop
-    
-    Wire.beginTransmission(I2C_SLAVE);                // begin transaction with slave address
-    Wire.write(0x2F);                                 // register address
-    Wire.endTransmission(true);                       // end transaction with a stop
-    //telnet.println("complete.\n");
   }
+
 }
 
