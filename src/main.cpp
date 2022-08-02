@@ -27,8 +27,9 @@ const char*   ntpServerName = "pool.ntp.org";   // NTP server name
 const long    gmtOffset_sec = -14400;           //Replace with your GMT offset (seconds)
 const int     daylightOffset_sec = 0;           //Replace with your daylight offset (seconds)
 
-const uint8_t I2C_MASTER = 0x42;
-const uint8_t I2C_SLAVE = 0x37;
+const uint8_t I2C_SLAVE_LIST[]  = {0x37, 0x39};
+const uint8_t I2C_MASTER        = 0x42;
+const uint8_t I2C_SLAVE         = 0x37;
 
 String        newHostname = "packmaster";
 IPAddress     ntpServerIP;                        // time.nist.gov NTP server address
