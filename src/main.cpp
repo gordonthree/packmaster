@@ -9,6 +9,7 @@
 #include <time.h>
 #include "TimeLib.h"
 #include "sntp.h"
+#include "RTClib.h"
 
 #define SERIAL_SPEED 115200
 
@@ -29,23 +30,26 @@ const uint8_t I2C_MASTER = 0x42;
 const uint8_t I2C_SLAVE = 0x37;
 
 String newHostname = "packmaster";
-
 IPAddress ntpServerIP;                        // time.nist.gov NTP server address
 
+RTC_DS3231 rtc;
 ESPTelnet telnet;
 IPAddress ip;
+
 uint16_t  port = 23;
 uint16_t  loopCnt = 0;                        // loop counter to update slave time
 
 time_t lasttimeSync = 0;                      // when did we last send slaves the time?
 uint16_t timesyncInterval = 600;              // sync time every 600 seconds, 10 minutes
-char buff[100];
 
 volatile bool readTimestamps = false;
 volatile bool readUptimes    = false;
 volatile bool readVBus       = false;
 volatile bool readVPack      = false;
 volatile bool readIPack      = false;
+
+char buff[100];
+char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
 
 void printLocalTime()
 {
@@ -153,8 +157,14 @@ void syncProvider() {
 void setup() {
   Serial.begin(115200);  // start serial for output
   Wire.begin(SDA_PIN, SCL_PIN, I2C_MASTER);        // join i2c bus (address optional for master)
-  Wire.setClock(100000);  // 100khz clock
-  
+  Wire.setClock(100000);  // 100khz i2c clock
+
+  if (! rtc.begin()) {
+    Serial.println("Couldn't find RTC");
+    Serial.flush();
+//    while (1) delay(10);
+  }  
+
   delay(2000);
   
   Serial.println("\n\nBooting");
