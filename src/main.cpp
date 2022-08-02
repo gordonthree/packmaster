@@ -12,8 +12,8 @@
 
 #define SERIAL_SPEED 115200
 
-#define SDA_PIN 4
-#define SCL_PIN 5
+#define SDA_PIN 4 // D2
+#define SCL_PIN 5 // D1
 
 #define STASSID "Tell my WiFi I love her"
 #define STAPSK  "2317239216"
