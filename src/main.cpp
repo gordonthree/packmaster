@@ -334,7 +334,7 @@ void loop() {
 
   if (nextPing) {
     loopCnt++;                                        // increment loop counter
-    uint32 timeNow = sntp_get_current_timestamp();    // get unix style timestamp from ntp provider
+    time_t timeNow = sntp_get_current_timestamp();    // get unix style timestamp from ntp provider
     // telnetLocalTime();                             // print the current time
 
     if (readTimestamps) {
@@ -444,8 +444,8 @@ void loop() {
     // now try writing some data
     //telnet.print("TX: ");
 
-    uint32_t timeStamp = sntp_get_current_timestamp();  // grab most rececnt timestamp
-    ltoa(timeStamp, buff, 10);                          // convert timestamp into C string
+    // uint32_t timeStamp = sntp_get_current_timestamp();  // grab most rececnt timestamp
+    // ltoa(timeStamp, buff, 10);                          // convert timestamp into C string
     
     if (tickTock) {
       Wire.beginTransmission(I2C_SLAVE);                // begin transaction with slave address
