@@ -7,6 +7,7 @@
 #include <ArduinoOTA.h>
 #include "ESPTelnet.h"          
 #include <time.h>
+//#include  <SPI.h>
 #include "TimeLib.h"
 #include "sntp.h"
 #include "RTClib.h"
@@ -19,28 +20,28 @@
 #define STASSID "Tell my WiFi I love her"
 #define STAPSK  "2317239216"
 
-const char* ssid = STASSID;
-const char* password = STAPSK;
+const char*   ssid = STASSID;
+const char*   password = STAPSK;
 
-const char* ntpServerName = "pool.ntp.org";   // NTP server name
-const long  gmtOffset_sec = -14400;           //Replace with your GMT offset (seconds)
-const int   daylightOffset_sec = 0;           //Replace with your daylight offset (seconds)
+const char*   ntpServerName = "pool.ntp.org";   // NTP server name
+const long    gmtOffset_sec = -14400;           //Replace with your GMT offset (seconds)
+const int     daylightOffset_sec = 0;           //Replace with your daylight offset (seconds)
 
 const uint8_t I2C_MASTER = 0x42;
 const uint8_t I2C_SLAVE = 0x37;
 
-String newHostname = "packmaster";
-IPAddress ntpServerIP;                        // time.nist.gov NTP server address
+String        newHostname = "packmaster";
+IPAddress     ntpServerIP;                        // time.nist.gov NTP server address
 
-RTC_DS3231 rtc;
-ESPTelnet telnet;
-IPAddress ip;
+RTC_DS3231    rtc;
+ESPTelnet     telnet;
+IPAddress     ip;
 
-uint16_t  port = 23;
-uint16_t  loopCnt = 0;                        // loop counter to update slave time
+uint16_t      port = 23;
+uint16_t      loopCnt = 0;                        // loop counter to update slave time
 
-time_t lasttimeSync = 0;                      // when did we last send slaves the time?
-uint16_t timesyncInterval = 600;              // sync time every 600 seconds, 10 minutes
+time_t        lasttimeSync = 0;                      // when did we last send slaves the time?
+uint16_t      timesyncInterval = 600;              // sync time every 600 seconds, 10 minutes
 
 volatile bool readTimestamps = false;
 volatile bool readUptimes    = false;
@@ -61,6 +62,16 @@ void printLocalTime()
   delay(1000);
 }
 
+void syncSlavetime() {
+  time_t timeStamp = now();                           // this should get time from the RTC, or NTP
+  Wire.beginTransmission(I2C_SLAVE);                  // begin transaction with slave address
+  Wire.write(0x60);                                   // send time packet populated above
+  Wire.write(buff);                                   // send time packet populated above
+  Wire.endTransmission(true);                         // end transaction with a stop
+  lasttimeSync = timeStamp;                           // update last sync timestamp
+  telnet.println("Updated time on slave.");
+
+}
 void telnetLocalTime()
 {
   time_t rawtime;
@@ -172,8 +183,26 @@ void setupTelnet() {
       readIPack = readIPack ^ 1;
     } else if (str == "scan") {
       scanI2C();
-    } else if (str == "bye") {
+    } else if (str == "sync") {
+      if (!timeNotSet) {
+        if (!rtc.lostPower()) { 
+          telnet.println("RTC seems to be set already!");
+          //DateTime rtcTime = rtc.now();
+          //String timeStampp = rtc.now();
+          //telnet.println(rtcTime.unixtime); 
+        }
+        telnet.print("Setting RTC using NTP timestamp... ");
+        rtc.adjust(DateTime(now())); // set RTC from NTP
+        if (!rtc.lostPower()) telnet.println("successful!");
+        else telnet.println("failed.");
 
+        // DateTime rtcNow = rtc.now();
+        // telnet.println(DateTime(rtc.now()));
+
+      }
+    } else if (str == "set") {
+      syncSlavetime();
+    } else if (str == "bye") {
       telnet.println("> disconnecting you...");
       telnet.disconnectClient();
       }
@@ -232,8 +261,8 @@ void setup() {
   //init and get the time
     Serial.println("Sending NTP request ...");
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServerName);
-    //setSyncInterval(600);
-    printLocalTime();
+    setSyncInterval(600);
+    //printLocalTime();
   }
 
   ArduinoOTA.onStart([]() {
@@ -295,8 +324,12 @@ void loop() {
   telnet.loop();
   using periodic = esp8266::polledTimeout::periodicMs;
   static periodic nextPing(1000);
-
+  time_t timeStamp = now();
   ArduinoOTA.handle();
+
+  if (timeStamp > lasttimeSync + timesyncInterval) {    // check to see if we need to refresh the time on slaves
+    syncSlavetime();
+  }
 
   if (nextPing) {
     loopCnt++;                                        // increment loop counter
@@ -323,7 +356,7 @@ void loop() {
         }
         byteCnt++;
       }
-      telnet.println("");
+      telnet.println(" sec");
     }
 
     if (readUptimes) {
@@ -343,7 +376,7 @@ void loop() {
         }
         byteCnt++;
       }
-      telnet.println("");
+      telnet.println(" sec");
     }
 
     if (readVBus) {
@@ -413,15 +446,6 @@ void loop() {
     uint32_t timeStamp = sntp_get_current_timestamp();  // grab most rececnt timestamp
     ltoa(timeStamp, buff, 10);                          // convert timestamp into C string
     
-    if (timeStamp > lasttimeSync + timesyncInterval) {    // check to see if we need to refresh the time on slaves
-      Wire.beginTransmission(I2C_SLAVE);                  // begin transaction with slave address
-      Wire.write(0x60);                                   // send time packet populated above
-      Wire.write(buff);                                   // send time packet populated above
-      Wire.endTransmission(true);                         // end transaction with a stop
-      lasttimeSync = timeStamp;                           // update last sync timestamp
-      telnet.println("Updated time on slave.");
-    }
-
     Wire.beginTransmission(I2C_SLAVE);                // begin transaction with slave address
     Wire.write(0x2E);                                 // register address
     Wire.endTransmission(true);                       // end transaction with a stop
