@@ -109,6 +109,42 @@ void errorMsg(String error, bool restart = true) {
   }
 }
 
+void scanI2C() {
+  byte error, address;
+  int nDevices;
+
+  telnet.println("Scanning...");
+
+  nDevices = 0;
+  for(address = 1; address < 127; address++ ) {
+    Wire.beginTransmission(address);
+    error = Wire.endTransmission();
+
+    if (error == 0)
+    {
+      telnet.print("I2C device found at address 0x");
+      if (address<16) 
+      telnet.print("0");
+      telnet.print(address,HEX);
+      telnet.println(" !");
+
+      nDevices++;
+    }
+     else if (error==4) 
+    {
+      telnet.print("Unknow error at address 0x");
+      if (address<16) 
+      telnet.print("0");
+      telnet.println(address,HEX);
+    } 
+  }
+  
+  if (nDevices == 0)
+    telnet.println("No I2C devices found\n");
+  else
+    telnet.println("done\n");
+ 
+}
 
 void setupTelnet() {  
   // passing on functions for various telnet events
@@ -134,6 +170,8 @@ void setupTelnet() {
       readVPack = readVPack ^ 1;
     } else if (str == "ipack") {
       readIPack = readIPack ^ 1;
+    } else if (str == "scan") {
+      scanI2C();
     } else if (str == "bye") {
 
       telnet.println("> disconnecting you...");
@@ -179,6 +217,7 @@ void setup() {
     delay(5000);
     ESP.restart();
   }
+
 
   setupTelnet();
 
