@@ -68,7 +68,7 @@ void syncSlavetime(uint8_t slaveAddress) {
   time_t timeStamp = now();                           // this should get time from the RTC, or NTP
   Wire.beginTransmission(slaveAddress);                  // begin transaction with slave address
   Wire.write(0x60);                                   // send time packet populated above
-  Wire.write(buff);                                   // send time packet populated above
+  Wire.write(timeStamp);                                   // send time packet populated above
   Wire.endTransmission(true);                         // end transaction with a stop
   lasttimeSync = timeStamp;                           // update last sync timestamp
   sprintf(buff, "Updated time on slave 0x%X.", slaveAddress);
@@ -307,17 +307,17 @@ void setup() {
   
 }
 
-struct timeArray_t{
-  byte regAddr;
-  uint32_t timeStamp;
-};
+// struct timeArray_t{
+//   byte regAddr;
+//   uint32_t timeStamp;
+// };
 
-const uint8_t timeUnion_size = sizeof(timeArray_t);
+// const uint8_t timeUnion_size = sizeof(timeArray_t);
 
-union I2C_timePacket_t{
-  timeArray_t currentTime;
-  byte I2CPacket[timeUnion_size];
-};
+// union I2C_timePacket_t{
+//   timeArray_t currentTime;
+//   byte I2CPacket[timeUnion_size];
+// };
 
 
 float i2cReadF(uint8_t slaveAddress, uint8_t cmdAddress) {
@@ -329,7 +329,7 @@ float i2cReadF(uint8_t slaveAddress, uint8_t cmdAddress) {
   Wire.beginTransmission(slaveAddress);             // start transaction
   Wire.write(cmdAddress);                                 // tell slave we want to read this register
   Wire.endTransmission(false);                      // send instruction, retain control of bus
-  Wire.requestFrom(I2C_SLAVE, readBytes, (bool) true);     // request 6 bytes from slave device and then release bus
+  Wire.requestFrom(slaveAddress, readBytes, (bool) true);     // request 6 bytes from slave device and then release bus
   Wire.readBytesUntil(stopChar, rxBuffer, readBytes);   // read five bytes or until the first null
 
   theResult = strtof(rxBuffer, NULL);
@@ -346,7 +346,7 @@ uint32_t i2cReadUL(int slaveAddress, int cmdAddress) {
   Wire.beginTransmission(slaveAddress);             // start transaction
   Wire.write(cmdAddress);                                 // tell slave we want to read this register
   Wire.endTransmission(false);                      // send instruction, retain control of bus
-  Wire.requestFrom(I2C_SLAVE, readBytes, (bool) true);     // request 6 bytes from slave device and then release bus
+  Wire.requestFrom(slaveAddress, readBytes, (bool) true);     // request 6 bytes from slave device and then release bus
   Wire.readBytesUntil(stopChar, rxBuffer, readBytes);   // read five bytes or until the first null
   telnet.println(rxBuffer);
   theResult = strtoul(rxBuffer, NULL, 10);
@@ -359,12 +359,12 @@ long i2cReadI(int slaveAddress, int cmdAddress) {
   uint8_t readBytes = 5;
   char rxBuffer[20];
   long theResult = 0.0;
-  char stopChar = '\0';                             // unix null char
-  Wire.beginTransmission(slaveAddress);             // start transaction
-  Wire.write(cmdAddress);                                 // tell slave we want to read this register
-  Wire.endTransmission(false);                      // send instruction, retain control of bus
-  Wire.requestFrom(I2C_SLAVE, readBytes, (bool) true);     // request 6 bytes from slave device and then release bus
-  Wire.readBytesUntil(stopChar, rxBuffer, readBytes);   // read five bytes or until the first null
+  char stopChar = '\0';                                       // unix null char
+  Wire.beginTransmission(slaveAddress);                       // start transaction
+  Wire.write(cmdAddress);                                     // tell slave we want to read this register
+  Wire.endTransmission(false);                                // send instruction, retain control of bus
+  Wire.requestFrom(slaveAddress, readBytes, (bool) true);     // request bytes from slave device and then release bus
+  Wire.readBytesUntil(stopChar, rxBuffer, readBytes);         // read bytes or until the first null
 
   theResult = strtol(rxBuffer, NULL, 10);
 
@@ -377,7 +377,7 @@ void loop() {
   static periodic nextPing(1000);
   time_t timeStamp = now();
   ArduinoOTA.handle();
-  bool tickTock = false;
+  // bool tickTock = false;
 
   if (timeStamp > lasttimeSync + timesyncInterval) {    // check to see if we need to refresh the time on slaves
     syncSlavetime(0x37);
@@ -385,24 +385,22 @@ void loop() {
   }
 
   if (nextPing) {
-    loopCnt++;                                        // increment loop counter
-    time_t timeNow = sntp_get_current_timestamp();    // get unix style timestamp from ntp provider
+    // loopCnt++;                                        // increment loop counter
+    // uint32_t timeNow = sntp_get_current_timestamp();    // get unix style timestamp from ntp provider
     // telnetLocalTime();                             // print the current time
 
     if (readTimestamps) {
-      uint8_t byteCnt = 0;
-      uint8_t readBytes = 10;
-      sprintf(buff, "Master timestamp: %u sec", timeNow);
+      sprintf(buff, "Master timestamp: %lu sec", timeStamp);
       telnet.println(buff);
 
       uint32_t theResult = 0;
       
       theResult = i2cReadUL(0x37, 0x62);
-      sprintf(buff, "Slave 0x37 timestamp: %u sec", theResult);
+      sprintf(buff, "Slave 0x37 timestamp: %lu sec", theResult);
       telnet.println(buff);
 
       theResult = i2cReadUL(0x39, 0x62);
-      sprintf(buff, "Slave 0x39 timestamp: %u sec", theResult);
+      sprintf(buff, "Slave 0x39 timestamp: %lu sec", theResult);
       telnet.println(buff);
     }
 
@@ -459,17 +457,17 @@ void loop() {
     // uint32_t timeStamp = sntp_get_current_timestamp();  // grab most rececnt timestamp
     // ltoa(timeStamp, buff, 10);                          // convert timestamp into C string
     
-    if (tickTock) {
-      Wire.beginTransmission(I2C_SLAVE);                // begin transaction with slave address
-      Wire.write(0x2E);                                 // register address
-      Wire.endTransmission(true);                       // end transaction with a stop
-      tickTock = false;
-    } else {
-      Wire.beginTransmission(I2C_SLAVE);                // begin transaction with slave address
-      Wire.write(0x2F);                                 // register address
-      Wire.endTransmission(true);                       // end transaction with a stop   
-      tickTock = true;
-    }                 
+    // if (tickTock) {
+    //   Wire.beginTransmission(I2C_SLAVE);                // begin transaction with slave address
+    //   Wire.write(0x2E);                                 // register address
+    //   Wire.endTransmission(true);                       // end transaction with a stop
+    //   tickTock = false;
+    // } else {
+    //   Wire.beginTransmission(I2C_SLAVE);                // begin transaction with slave address
+    //   Wire.write(0x2F);                                 // register address
+    //   Wire.endTransmission(true);                       // end transaction with a stop   
+    //   tickTock = true;
+    // }                 
 
   }
 
