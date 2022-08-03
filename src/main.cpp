@@ -8,7 +8,7 @@
 #include "ESPTelnet.h"          
 #include <time.h>
 //#include  <SPI.h>
-#include "TimeLib.h"
+//#include "TimeLib.h"
 #include "sntp.h"
 #include "RTClib.h"
 //#include "pm_i2croutines.h" // include my personal blend of herbs and spices
@@ -52,7 +52,15 @@ volatile bool readVPack      = false;
 volatile bool readIPack      = false;
 
 char buff[100];
-char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+// char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+
+uint32_t now() {
+  uint32_t rtcTS = rtc.now().unixtime();
+  uint32_t ntpTS = sntp_get_current_timestamp();
+
+  if (ntpTS>rtcTS) return ntpTS;
+  else return rtcTS;
+}
 
 void printLocalTime()
 {
@@ -65,13 +73,13 @@ void printLocalTime()
 }
 
 void syncSlavetime(uint8_t slaveAddress) {
-  time_t timeStamp = now();                           // this should get time from the RTC, or NTP
+  time_t synctimeStamp = now();                           // this should get time from the RTC, or NTP
   Wire.beginTransmission(slaveAddress);                  // begin transaction with slave address
   Wire.write(0x60);                                   // send time packet populated above
-  Wire.write(timeStamp);                                   // send time packet populated above
+  Wire.write(synctimeStamp);                                   // send time packet populated above
   Wire.endTransmission(true);                         // end transaction with a stop
-  lasttimeSync = timeStamp;                           // update last sync timestamp
-  sprintf(buff, "Updated time on slave 0x%X.", slaveAddress);
+  lasttimeSync = synctimeStamp;                           // update last sync timestamp
+  sprintf(buff, "Time on slave 0x%X set to timestamp %u.", slaveAddress, synctimeStamp);
   telnet.println(buff);
 
 }
@@ -160,6 +168,27 @@ void scanI2C() {
  
 }
 
+void syncNTP() {
+  uint32_t rtcTS = rtc.now().unixtime();
+  uint32_t ntpTS = sntp_get_current_timestamp();
+
+  sprintf(buff, "RTC time is %u\nNTP time is %u", rtcTS, ntpTS);
+  telnet.println(buff);
+
+  if (ntpTS>rtcTS) {
+    rtc.adjust(DateTime(ntpTS)); // set rtc time using ntp timestamp?
+    telnet.println("Copied NTP time to RTC, retesting.");
+
+    rtcTS = rtc.now().unixtime();
+    ntpTS = sntp_get_current_timestamp();
+
+    sprintf(buff, "RTC time is %u\nNTP time is %u", rtcTS, ntpTS);
+    telnet.println(buff);
+  } else {
+    telnet.println("Clocks match, no update needed.");
+  }
+}
+
 void setupTelnet() {  
   // passing on functions for various telnet events
   telnet.onConnect(onTelnetConnect);
@@ -187,22 +216,7 @@ void setupTelnet() {
     } else if (str == "scan") {
       scanI2C();
     } else if (str == "sync") {
-      if (!timeNotSet) {
-        if (!rtc.lostPower()) { 
-          telnet.println("RTC seems to be set already!");
-          //DateTime rtcTime = rtc.now();
-          //String timeStampp = rtc.now();
-          //telnet.println(rtcTime.unixtime); 
-        }
-        telnet.print("Setting RTC using NTP timestamp... ");
-        rtc.adjust(DateTime(now())); // set RTC from NTP
-        if (!rtc.lostPower()) telnet.println("successful!");
-        else telnet.println("failed.");
-
-        // DateTime rtcNow = rtc.now();
-        // telnet.println(DateTime(rtc.now()));
-
-      }
+      syncNTP();
     } else if (str == "set") {
       syncSlavetime(0x37);
       syncSlavetime(0x39);
@@ -227,7 +241,7 @@ void syncProvider() {
 
 void setup() {
   Serial.begin(115200);  // start serial for output
-  Wire.begin(SDA_PIN, SCL_PIN, I2C_MASTER);        // join i2c bus (address optional for master)
+  Wire.begin(SDA_PIN, SCL_PIN);        // join i2c bus (address optional for master)
   Wire.setClock(100000);  // 100khz i2c clock
 
   if (! rtc.begin()) {
@@ -265,7 +279,7 @@ void setup() {
   //init and get the time
     Serial.println("Sending NTP request ...");
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServerName);
-    setSyncInterval(600);
+    //setSyncInterval(600);
     //printLocalTime();
   }
 
@@ -306,19 +320,6 @@ void setup() {
   telnet.println(WiFi.localIP());
   
 }
-
-// struct timeArray_t{
-//   byte regAddr;
-//   uint32_t timeStamp;
-// };
-
-// const uint8_t timeUnion_size = sizeof(timeArray_t);
-
-// union I2C_timePacket_t{
-//   timeArray_t currentTime;
-//   byte I2CPacket[timeUnion_size];
-// };
-
 
 float i2cReadF(uint8_t slaveAddress, uint8_t cmdAddress) {
   // uint8_t byteCnt = 0;
@@ -375,7 +376,7 @@ void loop() {
   telnet.loop();
   using periodic = esp8266::polledTimeout::periodicMs;
   static periodic nextPing(1000);
-  time_t timeStamp = now();
+  time_t timeStamp = rtc.now().unixtime();
   ArduinoOTA.handle();
   // bool tickTock = false;
 
@@ -390,7 +391,8 @@ void loop() {
     // telnetLocalTime();                             // print the current time
 
     if (readTimestamps) {
-      sprintf(buff, "Master timestamp: %lu sec", timeStamp);
+      uint32_t fnctimeStamp = rtc.now().unixtime();
+      sprintf(buff, "Master timestamp: %lu sec", fnctimeStamp);
       telnet.println(buff);
 
       uint32_t theResult = 0;
