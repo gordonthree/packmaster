@@ -13,43 +13,43 @@
 #include "RTClib.h"
 //#include "pm_i2croutines.h" // include my personal blend of herbs and spices
 
-#define SERIAL_SPEED 115200
+#define       SERIAL_SPEED         115200
 
-#define SDA_PIN 4 // D2
-#define SCL_PIN 5 // D1
+#define       SDA_PIN              4 // D2
+#define       SCL_PIN              5 // D1
 
-#define STASSID "Tell my WiFi I love her"
-#define STAPSK  "2317239216"
+#define       STASSID              "Tell my WiFi I love her"
+#define       STAPSK               "2317239216"
 
-const char*   ssid = STASSID;
-const char*   password = STAPSK;
+const char*   ssid               = STASSID;
+const char*   password           = STAPSK;
 
-const char*   ntpServerName = "pool.ntp.org";   // NTP server name
-const long    gmtOffset_sec = -14400;           //Replace with your GMT offset (seconds)
+const char*   ntpServerName      = "pool.ntp.org";   // NTP server name
+const long    gmtOffset_sec      = -14400;           //Replace with your GMT offset (seconds)
 const int     daylightOffset_sec = 0;           //Replace with your daylight offset (seconds)
 
-const uint8_t I2C_SLAVE_LIST[]  = {0x37, 0x39};
-const uint8_t I2C_MASTER        = 0x42;
-const uint8_t I2C_SLAVE         = 0x37;
+const uint8_t I2C_SLAVE_LIST[]   = {0x37, 0x39};
+const uint8_t I2C_MASTER         = 0x42;
+const uint8_t I2C_SLAVE          = 0x37;
 
-String        newHostname = "packmaster";
+String        newHostname        = "packmaster";
 IPAddress     ntpServerIP;                        // time.nist.gov NTP server address
 
 RTC_DS3231    rtc;
 ESPTelnet     telnet;
 IPAddress     ip;
 
-uint16_t      port = 23;
-uint16_t      loopCnt = 0;                        // loop counter to update slave time
+uint16_t      port               = 23;
+uint16_t      loopCnt            = 0;                        // loop counter to update slave time
 
-time_t        lasttimeSync = 0;                      // when did we last send slaves the time?
-uint16_t      timesyncInterval = 600;              // sync time every 600 seconds, 10 minutes
+uint32_t      lasttimeSync       = 0;                      // when did we last send slaves the time?
+uint16_t      timesyncInterval   = 600;              // sync time every 600 seconds, 10 minutes
 
-volatile bool readTimestamps = false;
-volatile bool readUptimes    = false;
-volatile bool readVBus       = false;
-volatile bool readVPack      = false;
-volatile bool readIPack      = false;
+volatile bool readTimestamps     = false;
+volatile bool readUptimes        = false;
+volatile bool readVBus           = false;
+volatile bool readVPack          = false;
+volatile bool readIPack          = false;
 
 char buff[100];
 // char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
@@ -72,17 +72,73 @@ void printLocalTime()
   delay(1000);
 }
 
-void syncSlavetime(uint8_t slaveAddress) {
-  time_t synctimeStamp = now();                           // this should get time from the RTC, or NTP
-  Wire.beginTransmission(slaveAddress);                  // begin transaction with slave address
-  Wire.write(0x60);                                   // send time packet populated above
-  Wire.write(synctimeStamp);                                   // send time packet populated above
-  Wire.endTransmission(true);                         // end transaction with a stop
-  lasttimeSync = synctimeStamp;                           // update last sync timestamp
-  sprintf(buff, "Time on slave 0x%X set to timestamp %u.", slaveAddress, synctimeStamp);
-  telnet.println(buff);
+// union Uint32Buff {      // Union to break down single long into four bytes.
+//   uint32_t longNumber;
+//   char longBytes[4];
+// };
 
+void i2cWriteUL(uint8_t slaveAddress, uint8_t cmdAddress, uint32_t cmdData) {
+  // Uint32Buff txbuffer;
+  char txbuffer[15];
+  sprintf(txbuffer, "%lu", cmdData);
+  Wire.beginTransmission(slaveAddress);               // begin transaction with slave address
+  Wire.write(0x60);                                   // send register address byte
+  Wire.write(txbuffer);                                // send bytes
+  Wire.endTransmission(true);                         // end transaction with a stop
+  // sprintf(buff, "Wrote %s to slave 0x%X at address 0x%X", txbuffer, slaveAddress, cmdAddress);
+  // telnet.println(buff);
 }
+
+float i2cReadF(uint8_t slaveAddress, uint8_t cmdAddress) {
+  // uint8_t byteCnt = 0;
+  uint8_t readBytes = 5;
+  char rxBuffer[20];
+  float theResult = 0.0;
+  char stopChar = '\0';                             // unix null char
+  Wire.beginTransmission(slaveAddress);             // start transaction
+  Wire.write(cmdAddress);                                 // tell slave we want to read this register
+  Wire.endTransmission(false);                      // send instruction, retain control of bus
+  Wire.requestFrom(slaveAddress, readBytes, (bool) true);     // request 6 bytes from slave device and then release bus
+  Wire.readBytesUntil(stopChar, rxBuffer, readBytes);   // read five bytes or until the first null
+
+  theResult = strtof(rxBuffer, NULL);
+
+  return theResult;
+}
+
+uint32_t i2cReadUL(uint8_t slaveAddress, uint8_t cmdAddress) {
+  char      rxBuffer[20];
+  char      stopChar  = '\0';                             // unix null char
+  uint8_t   readBytes = 11;
+  uint32_t  theResult = 0.0;
+  Wire.beginTransmission(slaveAddress);             // start transaction
+  Wire.write(cmdAddress);                                 // tell slave we want to read this register
+  Wire.endTransmission(false);                      // send instruction, retain control of bus
+  Wire.requestFrom(slaveAddress, readBytes, (bool) true);     // request 6 bytes from slave device and then release bus
+  Wire.readBytesUntil(stopChar, rxBuffer, readBytes);   // read five bytes or until the first null
+  // telnet.println(rxBuffer);
+  theResult = strtoul(rxBuffer, NULL, 10);
+  
+  return theResult;
+}
+
+long i2cReadI(int slaveAddress, int cmdAddress) {
+    // uint8_t byteCnt = 0;
+  uint8_t readBytes = 5;
+  char rxBuffer[20];
+  long theResult = 0.0;
+  char stopChar = '\0';                                       // unix null char
+  Wire.beginTransmission(slaveAddress);                       // start transaction
+  Wire.write(cmdAddress);                                     // tell slave we want to read this register
+  Wire.endTransmission(false);                                // send instruction, retain control of bus
+  Wire.requestFrom(slaveAddress, readBytes, (bool) true);     // request bytes from slave device and then release bus
+  Wire.readBytesUntil(stopChar, rxBuffer, readBytes);         // read bytes or until the first null
+
+  theResult = strtol(rxBuffer, NULL, 10);
+
+  return theResult;
+}
+
 void telnetLocalTime()
 {
   time_t rawtime;
@@ -189,6 +245,12 @@ void syncNTP() {
   }
 }
 
+void syncSlaveTime(uint8_t slaveAddress) {
+  sprintf(buff, "Sending time to slave 0x%X", slaveAddress);
+  telnet.println(buff);
+  i2cWriteUL(slaveAddress, 0x60, now());
+}
+
 void setupTelnet() {  
   // passing on functions for various telnet events
   telnet.onConnect(onTelnetConnect);
@@ -218,8 +280,9 @@ void setupTelnet() {
     } else if (str == "sync") {
       syncNTP();
     } else if (str == "set") {
-      syncSlavetime(0x37);
-      syncSlavetime(0x39);
+      syncSlaveTime(0x37);
+      syncSlaveTime(0x39);
+      lasttimeSync = now();                           // update last sync timestamp
     } else if (str == "bye") {
       telnet.println("> good bye...");
       telnet.disconnectClient();
@@ -321,88 +384,37 @@ void setup() {
   
 }
 
-float i2cReadF(uint8_t slaveAddress, uint8_t cmdAddress) {
-  // uint8_t byteCnt = 0;
-  uint8_t readBytes = 5;
-  char rxBuffer[20];
-  float theResult = 0.0;
-  char stopChar = '\0';                             // unix null char
-  Wire.beginTransmission(slaveAddress);             // start transaction
-  Wire.write(cmdAddress);                                 // tell slave we want to read this register
-  Wire.endTransmission(false);                      // send instruction, retain control of bus
-  Wire.requestFrom(slaveAddress, readBytes, (bool) true);     // request 6 bytes from slave device and then release bus
-  Wire.readBytesUntil(stopChar, rxBuffer, readBytes);   // read five bytes or until the first null
-
-  theResult = strtof(rxBuffer, NULL);
-
-  return theResult;
-}
-
-uint32_t i2cReadUL(int slaveAddress, int cmdAddress) {
-    // uint8_t byteCnt = 0;
-  uint8_t readBytes = 5;
-  char rxBuffer[20];
-  uint32_t theResult = 0.0;
-  char stopChar = '\0';                             // unix null char
-  Wire.beginTransmission(slaveAddress);             // start transaction
-  Wire.write(cmdAddress);                                 // tell slave we want to read this register
-  Wire.endTransmission(false);                      // send instruction, retain control of bus
-  Wire.requestFrom(slaveAddress, readBytes, (bool) true);     // request 6 bytes from slave device and then release bus
-  Wire.readBytesUntil(stopChar, rxBuffer, readBytes);   // read five bytes or until the first null
-  telnet.println(rxBuffer);
-  theResult = strtoul(rxBuffer, NULL, 10);
-
-  return theResult;
-}
-
-long i2cReadI(int slaveAddress, int cmdAddress) {
-    // uint8_t byteCnt = 0;
-  uint8_t readBytes = 5;
-  char rxBuffer[20];
-  long theResult = 0.0;
-  char stopChar = '\0';                                       // unix null char
-  Wire.beginTransmission(slaveAddress);                       // start transaction
-  Wire.write(cmdAddress);                                     // tell slave we want to read this register
-  Wire.endTransmission(false);                                // send instruction, retain control of bus
-  Wire.requestFrom(slaveAddress, readBytes, (bool) true);     // request bytes from slave device and then release bus
-  Wire.readBytesUntil(stopChar, rxBuffer, readBytes);         // read bytes or until the first null
-
-  theResult = strtol(rxBuffer, NULL, 10);
-
-  return theResult;
-}
 
 void loop() {
-  telnet.loop();
   using periodic = esp8266::polledTimeout::periodicMs;
   static periodic nextPing(1000);
-  time_t timeStamp = rtc.now().unixtime();
-  ArduinoOTA.handle();
-  // bool tickTock = false;
+  uint32_t timeStamp = now();
+
+  telnet.loop();  // handle telnet events
+  ArduinoOTA.handle();  // handle OTA events
 
   if (timeStamp > lasttimeSync + timesyncInterval) {    // check to see if we need to refresh the time on slaves
-    syncSlavetime(0x37);
-    syncSlavetime(0x39);
+    syncSlaveTime(0x37);
+    syncSlaveTime(0x39);
+    lasttimeSync = now();                           // update last sync timestamp
   }
 
   if (nextPing) {
-    // loopCnt++;                                        // increment loop counter
-    // uint32_t timeNow = sntp_get_current_timestamp();    // get unix style timestamp from ntp provider
-    // telnetLocalTime();                             // print the current time
+    // telnet.println("Tick");
 
     if (readTimestamps) {
-      uint32_t fnctimeStamp = rtc.now().unixtime();
-      sprintf(buff, "Master timestamp: %lu sec", fnctimeStamp);
+      uint32_t fnctimeStamp = now();
+      sprintf(buff, "Master timestamp: %u sec", fnctimeStamp);
       telnet.println(buff);
 
       uint32_t theResult = 0;
       
       theResult = i2cReadUL(0x37, 0x62);
-      sprintf(buff, "Slave 0x37 timestamp: %lu sec", theResult);
+      sprintf(buff, "Slave 0x37 timestamp: %u sec", theResult);
       telnet.println(buff);
 
       theResult = i2cReadUL(0x39, 0x62);
-      sprintf(buff, "Slave 0x39 timestamp: %lu sec", theResult);
+      sprintf(buff, "Slave 0x39 timestamp: %u sec", theResult);
       telnet.println(buff);
     }
 
@@ -453,6 +465,7 @@ void loop() {
       sprintf(buff, "Slave 0x39 load: %.2f amps", theResult);
       telnet.println(buff);
     }
+
     // now try writing some data
     //telnet.print("TX: ");
 
