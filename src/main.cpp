@@ -7,6 +7,8 @@
 #include <ArduinoOTA.h>
 #include "ESPTelnet.h"          
 #include <time.h>
+#include <I2C_eeprom.h>
+
 //#include  <SPI.h>
 //#include "TimeLib.h"
 #include "sntp.h"
@@ -38,6 +40,8 @@ IPAddress     ntpServerIP;                        // time.nist.gov NTP server ad
 RTC_DS3231    rtc;
 ESPTelnet     telnet;
 IPAddress     ip;
+I2C_eeprom    fram(0x50, I2C_DEVICESIZE_24LC64);  // ferro-electric memory baby!
+
 
 uint16_t      port               = 23;
 uint16_t      loopCnt            = 0;                        // loop counter to update slave time
@@ -279,6 +283,41 @@ void setupTelnet() {
       scanI2C();
     } else if (str == "sync") {
       syncNTP();
+    } else if (str == "ee") {
+        if (! fram.isConnected()) telnet.println("ERROR: Can't find F-RAM!");
+        else {
+          telnet.println("Found my F-RAM!");
+          uint32_t size = fram.determineSize(false);  // debug param
+          if (size == 0)
+          {
+            telnet.println("SIZE: could not determine size");
+          }
+          else if (size > 1024)
+          {
+            sprintf(buff, "SIZE: %u KB.", size / 1024);
+            telnet.println(buff);
+          }
+          else
+          {
+            sprintf(buff, "SIZE: %u bytes.", size);
+            telnet.println(buff);
+          }
+
+        }
+    } else if (str == "format") {
+      uint32_t start = millis();
+      uint32_t size = fram.determineSize(false);  // debug param
+      if (size == 0) {
+        telnet.println("Could not determine size!");
+      } else {
+        telnet.print("Formatting");
+        for (uint32_t addr = 0; addr < size; addr += 128) {
+          if (addr % 1024 == 0) telnet.print('.');
+          fram.setBlock(addr, 0xFF, 128);
+        }
+        sprintf(buff, "done!\nElapsed time: %u ms!", millis() - start);
+        telnet.println(buff); 
+      }   
     } else if (str == "set") {
       syncSlaveTime(0x37);
       syncSlaveTime(0x39);
@@ -307,6 +346,7 @@ void setup() {
   Wire.begin(SDA_PIN, SCL_PIN);        // join i2c bus (address optional for master)
   Wire.setClock(100000);  // 100khz i2c clock
 
+  fram.begin();
   if (! rtc.begin()) {
     Serial.println("Couldn't find RTC");
     Serial.flush();
