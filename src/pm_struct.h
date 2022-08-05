@@ -1,4 +1,6 @@
+#pragma once
 #include <Arduino.h>
+#define pm_struct_h
 
 const uint8_t txBufferSize = 50;
 const uint8_t rxBufferSize = 50;
@@ -24,20 +26,20 @@ struct ADC_DATA {
   double  Volts    = 0.0;               // formatted value
 };
 
-union ulongArray
-{
-    uint32_t longNumber=0;
-    uint8_t  byteArray[4];
-};
+// union ulongArray
+// {
+//     uint32_t longNumber=0;
+//     uint8_t  byteArray[4];
+// };
 
-union floatArray
-{
-    float   floatNumber=0.0;
-    uint8_t byteArray[4];
-};
+// union floatArray
+// {
+//     float   floatNumber=0.0;
+//     uint8_t byteArray[4];
+// };
 
 
 
-volatile I2C_RX_DATA rxData;
-volatile I2C_TX_DATA txData;
-volatile ADC_DATA    adcDataBuffer[adcBufferSize];  // Enough room to store three adc readings
+// volatile I2C_RX_DATA rxData;
+// volatile I2C_TX_DATA txData;
+// volatile ADC_DATA    adcDataBuffer[adcBufferSize];  // Enough room to store three adc readings

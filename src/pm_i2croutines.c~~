@@ -1,9 +1,19 @@
+/*
+  Collection of I2C routines used in the PackMonitor project.
+  (C) 2022 Gordon "gordonthree" McLellan
+  Created August, 2022
+*/
+
 #include <Arduino.h>
 #include <Wire.h>
 #include "pm_i2croutines.h"
 #include "pm_struct.h"
 
-void i2cWriteUL(uint8_t slaveAddress, uint8_t cmdAddress, uint32_t cmdData) {
+PackMonitor::PackMonitor() {
+  // constructor does nothing
+};
+
+void PackMonitor::i2cWriteUL(uint8_t slaveAddress, uint8_t cmdAddress, uint32_t cmdData) {
   // Uint32Buff txbuffer;
   char txbuffer[15];
   sprintf(txbuffer, "%lu", cmdData);
@@ -15,7 +25,7 @@ void i2cWriteUL(uint8_t slaveAddress, uint8_t cmdAddress, uint32_t cmdData) {
   // telnet.println(buff);
 }
 
-float i2cReadF(uint8_t slaveAddress, uint8_t cmdAddress) {
+float PackMonitor::i2cReadF(uint8_t slaveAddress, uint8_t cmdAddress) {
   // uint8_t byteCnt = 0;
   uint8_t readBytes = 5;
   char rxBuffer[20];
@@ -32,7 +42,7 @@ float i2cReadF(uint8_t slaveAddress, uint8_t cmdAddress) {
   return theResult;
 }
 
-uint32_t i2cReadUL(uint8_t slaveAddress, uint8_t cmdAddress) {
+uint32_t PackMonitor::i2cReadUL(uint8_t slaveAddress, uint8_t cmdAddress) {
   char      rxBuffer[20];
   char      stopChar  = '\0';                             // unix null char
   uint8_t   readBytes = 11;
@@ -48,7 +58,7 @@ uint32_t i2cReadUL(uint8_t slaveAddress, uint8_t cmdAddress) {
   return theResult;
 }
 
-long i2cReadI(int slaveAddress, int cmdAddress) {
+long PackMonitor::i2cReadI(int slaveAddress, int cmdAddress) {
     // uint8_t byteCnt = 0;
   uint8_t readBytes = 5;
   char rxBuffer[20];
@@ -65,12 +75,10 @@ long i2cReadI(int slaveAddress, int cmdAddress) {
   return theResult;
 }
 
-float i2cReadFloat(int slaveAddress, int cmdAddress) {
+float PackMonitor::i2cReadFloat(int slaveAddress, int cmdAddress) {
   union floatArray buffer;
-    // uint8_t byteCnt = 0;
   const char stopChar = '\0';
-  uint8_t readBytes = 4;
-  // float theResult = 0.0;
+  const uint8_t readBytes = 4;
   Wire.beginTransmission(slaveAddress);                          // start transaction
   Wire.endTransmission(false);                                   // send instruction, retain control of bus
   Wire.write(cmdAddress);                                        // tell slave we want to read this register
@@ -78,4 +86,37 @@ float i2cReadFloat(int slaveAddress, int cmdAddress) {
   Wire.readBytesUntil(stopChar, buffer.byteArray , readBytes);    // read five bytes or until the first null
 
   return buffer.floatNumber;
+}
+
+uint32_t PackMonitor::i2cReadUlong(int slaveAddress, int cmdAddress) {
+  union ulongArray buffer;
+  const char stopChar = '\0';
+  const uint8_t readBytes = 4;
+  Wire.beginTransmission(slaveAddress);                          // start transaction
+  Wire.endTransmission(false);                                   // send instruction, retain control of bus
+  Wire.write(cmdAddress);                                        // tell slave we want to read this register
+  Wire.requestFrom(slaveAddress, readBytes, (bool) true);        // request 6 bytes from slave device and then release bus
+  Wire.readBytesUntil(stopChar, buffer.byteArray , readBytes);    // read five bytes or until the first null
+
+  return buffer.longNumber;
+}
+
+void PackMonitor::i2cWriteFloat(int slaveAddress, int cmdAddress, float cmdData) {
+  union floatArray buffer;
+  const uint8_t writeBytes = 4;
+  buffer.floatNumber = cmdData;                       // convert float into byte array 
+  Wire.beginTransmission(slaveAddress);               // begin transaction with slave address
+  Wire.write(0x60);                                   // send register address byte
+  Wire.write(buffer.byteArray, writeBytes);           // write bytes to buffer
+  Wire.endTransmission(true);                         // send data
+}
+
+void PackMonitor::i2cWriteUlong(int slaveAddress, int cmdAddress, uint32_t cmdData) {
+  union floatArray buffer;
+  const uint8_t writeBytes = 4;
+  buffer.floatNumber = cmdData;                       // convert ulong into byte array 
+  Wire.beginTransmission(slaveAddress);               // begin transaction with slave address
+  Wire.write(0x60);                                   // send register address byte
+  Wire.write(buffer.byteArray, writeBytes);           // write bytes to buffer
+  Wire.endTransmission(true);                         // send data
 }
