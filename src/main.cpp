@@ -15,19 +15,19 @@ NTPClient timeClient(ntpUDP);
 
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
-#include "ESPTelnet.h"          
+#include <ESPTelnet.h>
 #include <Wire.h>
 
 #include <time.h>
 #include <I2C_eeprom.h>
 
+#include <packmonlib.h>                                      // include my personal blend of herbs and spices
 
 //#include  <SPI.h>
 //#include "TimeLib.h"
-#include "sntp.h"
+#include <sntp.h>
 #include "RTClib.h"
 
-#include "pm_i2croutines.h"                                      // include my personal blend of herbs and spices
 #include "pm_struct.h"
 
 
@@ -57,6 +57,7 @@ RTC_DS3231    rtc;
 ESPTelnet     telnet;
 IPAddress     ip;
 I2C_eeprom    fram(0x50, I2C_DEVICESIZE_24LC64);                 // ferro-electric memory baby!
+PackMonLib    toolbox;
 
 
 uint16_t      port               = 23;
@@ -241,7 +242,7 @@ void syncNTP() {
 void syncSlaveTime(uint8_t slaveAddress) {
   sprintf(buff, "Sending time to slave 0x%X", slaveAddress);
   telnet.println(buff);
-  i2cWriteUlong(slaveAddress, 0x60, now());
+  toolbox.i2cWriteUlong(slaveAddress, 0x60, now());
   // i2cWriteUL(slaveAddress, 0x60, now());
 }
 
@@ -457,11 +458,11 @@ void loop() {
       uint32_t theResult = 0;
       
       //theResult = i2cReadUL(0x37, 0x62);
-      theResult = i2cReadUlong(0x37, 062);
+      theResult = toolbox.i2cReadUlong(0x37, 062);
       sprintf(buff, "Slave 0x37 timestamp: %u sec", theResult);
       telnet.println(buff);
 
-      theResult = i2cReadUlong(0x39, 062);
+      theResult = toolbox.i2cReadUlong(0x39, 062);
       sprintf(buff, "Slave 0x39 timestamp: %u sec", theResult);
       telnet.println(buff);
     }
@@ -469,11 +470,11 @@ void loop() {
     if (readUptimes) {
       uint32_t theResult = 0;
       
-      theResult = i2cReadUlong(0x37, 064);
+      theResult = toolbox.i2cReadUlong(0x37, 064);
       sprintf(buff, "Slave 0x37 uptime: %u sec", theResult);
       telnet.println(buff);
 
-      theResult = i2cReadUlong(0x39, 064);
+      theResult = toolbox.i2cReadUlong(0x39, 064);
       sprintf(buff, "Slave 0x39 uptime: %u sec", theResult);
       telnet.println(buff);
     }
@@ -481,11 +482,11 @@ void loop() {
     if (readVBus) {
      float theResult = 0.0;
       
-      theResult = i2cReadFloat(0x37, 0x3E);
+      theResult = toolbox.i2cReadFloat(0x37, 0x3E);
       sprintf(buff, "Slave 0x37 bus: %.2f volts dc", theResult);
       telnet.println(buff);
 
-      theResult = i2cReadFloat(0x39, 0x3E);
+      theResult = toolbox.i2cReadFloat(0x39, 0x3E);
       sprintf(buff, "Slave 0x39 bus: %.2f volts dc", theResult);
       telnet.println(buff);
     }
@@ -493,11 +494,11 @@ void loop() {
     if (readVPack) {
      float theResult = 0.0;
       
-      theResult = i2cReadFloat(0x37, 0x39);
+      theResult = toolbox.i2cReadFloat(0x37, 0x39);
       sprintf(buff, "Slave 0x37 pack: %.2f volts dc", theResult);
       telnet.println(buff);
 
-      theResult = i2cReadFloat(0x39, 0x39);
+      theResult = toolbox.i2cReadFloat(0x39, 0x39);
       sprintf(buff, "Slave 0x39 pack: %.2f volts dc", theResult);
       telnet.println(buff);
     }
@@ -505,11 +506,11 @@ void loop() {
     if (readIPack) {
       float theResult = 0.0;
       
-      theResult = i2cReadFloat(0x37, 0x33);
+      theResult = toolbox.i2cReadFloat(0x37, 0x33);
       sprintf(buff, "Slave 0x37 load: %.2f amps", theResult);
       telnet.println(buff);
 
-      theResult = i2cReadFloat(0x39, 0x33);
+      theResult = toolbox.i2cReadFloat(0x39, 0x33);
       sprintf(buff, "Slave 0x39 load: %.2f amps", theResult);
       telnet.println(buff);
     }

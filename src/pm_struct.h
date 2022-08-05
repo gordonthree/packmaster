@@ -26,17 +26,17 @@ struct ADC_DATA {
   double  Volts    = 0.0;               // formatted value
 };
 
-// union ulongArray
-// {
-//     uint32_t longNumber=0;
-//     uint8_t  byteArray[4];
-// };
+union ulongArray
+{
+    uint32_t longNumber=0;
+    uint8_t  byteArray[4];
+};
 
-// union floatArray
-// {
-//     float   floatNumber=0.0;
-//     uint8_t byteArray[4];
-// };
+union floatArray
+{
+    float   floatNumber=0.0;
+    uint8_t byteArray[4];
+};
 
 
 
