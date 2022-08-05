@@ -1,13 +1,23 @@
 #include <Arduino.h>
-#include <Wire.h>
+
+#ifdef ESP8266
 #include <PolledTimeout.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
+#elif ESP32
+#include <WiFi.h>
+#include <ESPmDNS.h>
+#include <NTPClient.h>
+#endif
+
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 #include "ESPTelnet.h"          
+#include <Wire.h>
+
 #include <time.h>
 #include <I2C_eeprom.h>
+
 
 //#include  <SPI.h>
 //#include "TimeLib.h"
@@ -22,6 +32,9 @@
 
 #define       STASSID              "Tell my WiFi I love her"
 #define       STAPSK               "2317239216"
+
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP);
 
 const char*   ssid               = STASSID;
 const char*   password           = STAPSK;
@@ -60,7 +73,7 @@ char buff[100];
 
 uint32_t now() {
   uint32_t rtcTS = rtc.now().unixtime();
-  uint32_t ntpTS = sntp_get_current_timestamp();
+  uint32_t ntpTS = timeClient.getEpochTime();
 
   if (ntpTS>rtcTS) return ntpTS;
   else return rtcTS;
@@ -75,7 +88,6 @@ void printLocalTime()
   Serial.println(asctime(timeinfo));
   delay(1000);
 }
-
 // union Uint32Buff {      // Union to break down single long into four bytes.
 //   uint32_t longNumber;
 //   char longBytes[4];
@@ -230,7 +242,7 @@ void scanI2C() {
 
 void syncNTP() {
   uint32_t rtcTS = rtc.now().unixtime();
-  uint32_t ntpTS = sntp_get_current_timestamp();
+  uint32_t ntpTS = timeClient.getEpochTime();
 
   sprintf(buff, "RTC time is %u\nNTP time is %u", rtcTS, ntpTS);
   telnet.println(buff);
@@ -240,7 +252,7 @@ void syncNTP() {
     telnet.println("Copied NTP time to RTC, retesting.");
 
     rtcTS = rtc.now().unixtime();
-    ntpTS = sntp_get_current_timestamp();
+    ntpTS = timeClient.getEpochTime();
 
     sprintf(buff, "RTC time is %u\nNTP time is %u", rtcTS, ntpTS);
     telnet.println(buff);
@@ -424,10 +436,15 @@ void setup() {
   
 }
 
+#ifndef ESP8266
+  const bool nextPing = true;
+#endif
 
 void loop() {
+  #ifdef ESP8266 // use esp8266 specific delay, esp32 delay at the bottom of loop()
   using periodic = esp8266::polledTimeout::periodicMs;
   static periodic nextPing(1000);
+  #endif
   uint32_t timeStamp = now();
 
   telnet.loop();  // handle telnet events
@@ -526,5 +543,12 @@ void loop() {
 
   }
 
-}
+  #ifdef ESP32
+  for (int xcnt = 0; xcnt < 1000; xcnt++) {
+    ArduinoOTA.handle();
+    telnet.loop();  // handle telnet events    
+    delay(1);
+  }
+  #endif
+} // end of loop()
 
