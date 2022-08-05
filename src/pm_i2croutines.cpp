@@ -66,15 +66,16 @@ long i2cReadI(int slaveAddress, int cmdAddress) {
 }
 
 float i2cReadFloat(int slaveAddress, int cmdAddress) {
-  floatArray buffer;
+  union floatArray buffer;
     // uint8_t byteCnt = 0;
+  const char stopChar = '\0';
   uint8_t readBytes = 4;
-  float theResult = 0.0;
+  // float theResult = 0.0;
   Wire.beginTransmission(slaveAddress);                          // start transaction
   Wire.endTransmission(false);                                   // send instruction, retain control of bus
   Wire.write(cmdAddress);                                        // tell slave we want to read this register
   Wire.requestFrom(slaveAddress, readBytes, (bool) true);        // request 6 bytes from slave device and then release bus
-  Wire.readBytesUntil(stopChar, buffer.byteArray, readBytes);    // read five bytes or until the first null
+  Wire.readBytesUntil(stopChar, buffer.byteArray , readBytes);    // read five bytes or until the first null
 
   return buffer.floatNumber;
 }
