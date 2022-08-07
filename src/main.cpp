@@ -26,15 +26,17 @@ NTPClient timeClient(ntpUDP);
 //#include  <SPI.h>
 //#include "TimeLib.h"
 #include <sntp.h>
-#include "RTClib.h"
+// #include "RTClib.h"
 
 #include "pm_struct.h"
 
 
 #define       SERIAL_SPEED         115200
 
-#define       SDA_PIN              4 // D2
-#define       SCL_PIN              5 // D1
+#define       SDA_PIN              4  // D2
+#define       SCL_PIN              5  // D1
+#define       BUS_RDY              12 // D6
+#define       CLI_ENABLE           14 // D5
 
 #define       STASSID              "Tell my WiFi I love her"
 #define       STAPSK               "2317239216"
@@ -46,14 +48,14 @@ const char*   ntpServerName      = "pool.ntp.org";               // NTP server n
 const long    gmtOffset_sec      = -14400;                       // Replace with your GMT offset (seconds)
 const int     daylightOffset_sec = 0;                            // Replace with your daylight offset (seconds)
 
-const uint8_t I2C_SLAVE_LIST[]   = {0x37, 0x39};
-const uint8_t I2C_MASTER         = 0x42;
-const uint8_t I2C_SLAVE          = 0x37;
+
+//const uint8_t I2C_MASTER         = 0x42;
+
 
 String        newHostname        = "packmaster";
 IPAddress     ntpServerIP;                                       // time.nist.gov NTP server address
 
-RTC_DS3231    rtc;
+// RTC_DS3231    rtc;
 ESPTelnet     telnet;
 IPAddress     ip;
 I2C_eeprom    fram(0x50, I2C_DEVICESIZE_24LC64);                 // ferro-electric memory baby!
@@ -72,6 +74,8 @@ volatile bool readVBus           = false;
 volatile bool readVPack          = false;
 volatile bool readIPack          = false;
 
+const int ClientA                = 0x35;
+const int ClientB                = 0x36;
 char buff[100];
 // char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
 
@@ -104,15 +108,16 @@ uint32_t framReadUlong(int dataAddress) {
 }
 
 uint32_t now() {
-  uint32_t rtcTS = rtc.now().unixtime();
+  // uint32_t rtcTS = rtc.now().unixtime();
   #ifdef ESP32
   uint32_t ntpTS = timeClient.getEpochTime();
   #else
   uint32_t ntpTS = sntp_get_current_timestamp();
   #endif
 
-  if (ntpTS>rtcTS) return ntpTS;
-  else return rtcTS;
+  // if (ntpTS>rtcTS) return ntpTS;
+  // else return rtcTS;
+  return ntpTS;
 }
 
 void printLocalTime()
@@ -211,32 +216,33 @@ void scanI2C() {
 }
 
 void syncNTP() {
-  uint32_t rtcTS = rtc.now().unixtime();
+  // uint32_t rtcTS = rtc.now().unixtime();
   #ifdef ESP32
   uint32_t ntpTS = timeClient.getEpochTime();
   #else
   uint32_t ntpTS = sntp_get_current_timestamp();
   #endif
   
-  sprintf(buff, "RTC time is %u\nNTP time is %u", rtcTS, ntpTS);
+  // sprintf(buff, "RTC time is %u\nNTP time is %u", rtcTS, ntpTS);
+  sprintf(buff, "NTP time is %u\n", ntpTS);
   telnet.println(buff);
 
-  if (ntpTS>rtcTS) {
-    rtc.adjust(DateTime(ntpTS)); // set rtc time using ntp timestamp?
-    telnet.println("Copied NTP time to RTC, retesting.");
+  // if ((ntpTS / 10)!=(rtcTS / 10)) {
+  //   rtc.adjust(DateTime(ntpTS)); // set rtc time using ntp timestamp?
+  //   telnet.println("Copied NTP time to RTC, retesting.");
 
-    rtcTS = rtc.now().unixtime();
-    #ifdef ESP32
-    uint32_t ntpTS = timeClient.getEpochTime();
-    #else
-    uint32_t ntpTS = sntp_get_current_timestamp();
-    #endif
+  //   rtcTS = rtc.now().unixtime();
+  //   #ifdef ESP32
+  //   uint32_t ntpTS = timeClient.getEpochTime();
+  //   #else
+  //   uint32_t ntpTS = sntp_get_current_timestamp();
+  //   #endif
 
-    sprintf(buff, "RTC time is %u\nNTP time is %u", rtcTS, ntpTS);
-    telnet.println(buff);
-  } else {
-    telnet.println("Clocks match, no update needed.");
-  }
+  //   sprintf(buff, "RTC time is %u\nNTP time is %u", rtcTS, ntpTS);
+  //   telnet.println(buff);
+  // } else {
+  //   telnet.println("Clocks match, no update needed.");
+  // }
 }
 
 void syncSlaveTime(uint8_t slaveAddress) {
@@ -274,57 +280,80 @@ void setupTelnet() {
       scanI2C();
     } else if (str == "sync") {
       syncNTP();
-    } else if (str == "rwf") {
-      float testF = 3.1415;
-      framWriteFloat(0x10, testF);
-      float result = framReadFloat(0x10);
-      sprintf(buff, "FRAM test wrote %f read %f", testF, result);
-      telnet.println(buff);
-    } else if (str == "rwts") {
-      uint32_t testTS = now();
-      framWriteUlong(0x20, testTS);
-      uint32_t result = framReadUlong(0x20);
-      sprintf(buff, "FRAM test wrote %u read %u", testTS, result);
-      telnet.println(buff);
-    } else if (str == "ee") {
-        if (! fram.isConnected()) telnet.println("ERROR: Can't find F-RAM!");
-        else {
-          telnet.println("Found my F-RAM!");
-          uint32_t size = fram.determineSize(false);  // debug param
-          if (size == 0)
-          {
-            telnet.println("SIZE: could not determine size");
-          }
-          else if (size > 1024)
-          {
-            sprintf(buff, "SIZE: %u KB.", size / 1024);
-            telnet.println(buff);
-          }
-          else
-          {
-            sprintf(buff, "SIZE: %u bytes.", size);
-            telnet.println(buff);
-          }
+    // } else if (str == "rwf") {
+    //   float testF = 3.1415;
+    //   framWriteFloat(0x10, testF);
+    //   float result = framReadFloat(0x10);
+    //   sprintf(buff, "FRAM test wrote %f read %f", testF, result);
+    //   telnet.println(buff);
+    // } else if (str == "rwts") {
+    //   uint32_t testTS = now();
+    //   framWriteUlong(0x20, testTS);
+    //   uint32_t result = framReadUlong(0x20);
+    //   sprintf(buff, "FRAM test wrote %u read %u", testTS, result);
+    //   telnet.println(buff);
+    // } else if (str == "ee") {
+    //     if (! fram.isConnected()) telnet.println("ERROR: Can't find F-RAM!");
+    //     else {
+    //       telnet.println("Found my F-RAM!");
+    //       uint32_t size = fram.determineSize(false);  // debug param
+    //       if (size == 0)
+    //       {
+    //         telnet.println("SIZE: could not determine size");
+    //       }
+    //       else if (size > 1024)
+    //       {
+    //         sprintf(buff, "SIZE: %u KB.", size / 1024);
+    //         telnet.println(buff);
+    //       }
+    //       else
+    //       {
+    //         sprintf(buff, "SIZE: %u bytes.", size);
+    //         telnet.println(buff);
+    //       }
 
-        }
-    } else if (str == "format") {
-      uint32_t start = millis();
-      uint32_t size = fram.determineSize(false);  // debug param
-      if (size == 0) {
-        telnet.println("Could not determine size!");
-      } else {
-        telnet.print("Formatting");
-        for (uint32_t addr = 0; addr < size; addr += 128) {
-          if (addr % 1024 == 0) telnet.print('.');
-          fram.setBlock(addr, 0xFF, 128);
-        }
-        sprintf(buff, "done!\nElapsed time: %u ms!", millis() - start);
-        telnet.println(buff); 
-      }   
+    //     }
+    // } else if (str == "format") {
+    //   uint32_t start = millis();
+    //   uint32_t size = fram.determineSize(false);  // debug param
+    //   if (size == 0) {
+    //     telnet.println("Could not determine size!");
+    //   } else {
+    //     telnet.print("Formatting");
+    //     for (uint32_t addr = 0; addr < size; addr += 128) {
+    //       if (addr % 1024 == 0) telnet.print('.');
+    //       fram.setBlock(addr, 0xFF, 128);
+    //     }
+    //     sprintf(buff, "done!\nElapsed time: %u ms!", millis() - start);
+    //     telnet.println(buff); 
+    //   }   
     } else if (str == "set") {
-      syncSlaveTime(0x37);
-      syncSlaveTime(0x39);
+      syncSlaveTime(ClientA);
+      syncSlaveTime(ClientB);
       lasttimeSync = now();                           // update last sync timestamp
+    } else if (str == "cli+") {
+      telnet.print("Client bus status: 0x0");
+      telnet.println(digitalRead(BUS_RDY), HEX);
+
+      if (digitalRead(BUS_RDY)!=HIGH) {
+        telnet.print("Enabling client interface. Bus status: 0x0");
+        digitalWrite(CLI_ENABLE, HIGH);
+        delay(1);
+        telnet.println(digitalRead(BUS_RDY), HEX);
+      } 
+      else telnet.println("Client bus connecion ready.");
+    } else if (str == "cli-") {
+      telnet.print("Client bus status: 0x0");
+      telnet.println(digitalRead(BUS_RDY), HEX);
+
+      if (digitalRead(BUS_RDY)==HIGH) {
+        telnet.print("Disabling client interface. Bus status: 0x0");
+        digitalWrite(CLI_ENABLE, LOW);
+        delay(1);
+        telnet.println(digitalRead(BUS_RDY), HEX);
+      } 
+      else telnet.println("Client bus connecion disabled.");
+      
     } else if (str == "bye") {
       telnet.println("> good bye...");
       telnet.disconnectClient();
@@ -345,16 +374,22 @@ void syncProvider() {
 }
 
 void setup() {
+  pinMode(BUS_RDY, INPUT);
+  pinMode(CLI_ENABLE, OUTPUT);
+  
+  digitalWrite(CLI_ENABLE, LOW);  // client interface shutdown 
+
   Serial.begin(115200);  // start serial for output
+
   Wire.begin(SDA_PIN, SCL_PIN);        // join i2c bus (address optional for master)
   Wire.setClock(100000);  // 100khz i2c clock
 
   fram.begin();
-  if (! rtc.begin()) {
-    Serial.println("Couldn't find RTC");
-    Serial.flush();
-//    while (1) delay(10);
-  }  
+//   if (! rtc.begin()) {
+//     Serial.println("Couldn't find RTC");
+//     Serial.flush();
+// //    while (1) delay(10);
+//   }  
 
   delay(2000);
   
@@ -390,6 +425,7 @@ void setup() {
   }
 
   ArduinoOTA.onStart([]() {
+    pinMode(CLI_ENABLE, INPUT); // disable client bus interface before OTA
     String type;
     if (ArduinoOTA.getCommand() == U_FLASH) {
       type = "sketch";
@@ -441,11 +477,11 @@ void loop() {
   telnet.loop();  // handle telnet events
   ArduinoOTA.handle();  // handle OTA events
 
-  if (timeStamp > lasttimeSync + timesyncInterval) {    // check to see if we need to refresh the time on slaves
-    syncSlaveTime(0x37);
-    syncSlaveTime(0x39);
-    lasttimeSync = now();                           // update last sync timestamp
-  }
+  // if (timeStamp > lasttimeSync + timesyncInterval) {    // check to see if we need to refresh the time on slaves
+  //   syncSlaveTime(ClientA);
+  //   syncSlaveTime(ClientB);
+  //   lasttimeSync = now();                           // update last sync timestamp
+  // }
 
   if (nextPing) {
     // telnet.println("Tick");
@@ -457,61 +493,61 @@ void loop() {
 
       uint32_t theResult = 0;
       
-      //theResult = i2cReadUL(0x37, 0x62);
-      theResult = toolbox.i2cReadUlong(0x37, 062);
-      sprintf(buff, "Slave 0x37 timestamp: %u sec", theResult);
+      //theResult = i2cReadUL(ClientA, 0x62);
+      theResult = toolbox.i2cReadUlong(ClientA, 062);
+      sprintf(buff, "Slave ClientA timestamp: %u sec", theResult);
       telnet.println(buff);
 
-      theResult = toolbox.i2cReadUlong(0x39, 062);
-      sprintf(buff, "Slave 0x39 timestamp: %u sec", theResult);
+      theResult = toolbox.i2cReadUlong(ClientB, 062);
+      sprintf(buff, "Slave ClientB timestamp: %u sec", theResult);
       telnet.println(buff);
     }
 
     if (readUptimes) {
       uint32_t theResult = 0;
       
-      theResult = toolbox.i2cReadUlong(0x37, 064);
-      sprintf(buff, "Slave 0x37 uptime: %u sec", theResult);
+      theResult = toolbox.i2cReadUlong(ClientA, 064);
+      sprintf(buff, "Slave ClientA uptime: %u sec", theResult);
       telnet.println(buff);
 
-      theResult = toolbox.i2cReadUlong(0x39, 064);
-      sprintf(buff, "Slave 0x39 uptime: %u sec", theResult);
+      theResult = toolbox.i2cReadUlong(ClientB, 064);
+      sprintf(buff, "Slave ClientB uptime: %u sec", theResult);
       telnet.println(buff);
     }
 
     if (readVBus) {
      float theResult = 0.0;
       
-      theResult = toolbox.i2cReadFloat(0x37, 0x3E);
-      sprintf(buff, "Slave 0x37 bus: %.2f volts dc", theResult);
+      theResult = toolbox.i2cReadFloat(ClientA, 0x3E);
+      sprintf(buff, "Slave ClientA bus: %.2f volts dc", theResult);
       telnet.println(buff);
 
-      theResult = toolbox.i2cReadFloat(0x39, 0x3E);
-      sprintf(buff, "Slave 0x39 bus: %.2f volts dc", theResult);
+      theResult = toolbox.i2cReadFloat(ClientB, 0x3E);
+      sprintf(buff, "Slave ClientB bus: %.2f volts dc", theResult);
       telnet.println(buff);
     }
 
     if (readVPack) {
      float theResult = 0.0;
       
-      theResult = toolbox.i2cReadFloat(0x37, 0x39);
-      sprintf(buff, "Slave 0x37 pack: %.2f volts dc", theResult);
+      theResult = toolbox.i2cReadFloat(ClientA, ClientB);
+      sprintf(buff, "Slave ClientA pack: %.2f volts dc", theResult);
       telnet.println(buff);
 
-      theResult = toolbox.i2cReadFloat(0x39, 0x39);
-      sprintf(buff, "Slave 0x39 pack: %.2f volts dc", theResult);
+      theResult = toolbox.i2cReadFloat(ClientB, ClientB);
+      sprintf(buff, "Slave ClientB pack: %.2f volts dc", theResult);
       telnet.println(buff);
     }
 
     if (readIPack) {
       float theResult = 0.0;
       
-      theResult = toolbox.i2cReadFloat(0x37, 0x33);
-      sprintf(buff, "Slave 0x37 load: %.2f amps", theResult);
+      theResult = toolbox.i2cReadFloat(ClientA, 0x33);
+      sprintf(buff, "Slave ClientA load: %.2f amps", theResult);
       telnet.println(buff);
 
-      theResult = toolbox.i2cReadFloat(0x39, 0x33);
-      sprintf(buff, "Slave 0x39 load: %.2f amps", theResult);
+      theResult = toolbox.i2cReadFloat(ClientB, 0x33);
+      sprintf(buff, "Slave ClientB load: %.2f amps", theResult);
       telnet.println(buff);
     }
 
