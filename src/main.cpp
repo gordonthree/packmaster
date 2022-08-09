@@ -19,7 +19,7 @@ NTPClient timeClient(ntpUDP);
 #include <Wire.h>
 
 #include <time.h>
-#include <I2C_eeprom.h>
+// #include <I2C_eeprom.h>
 
 #include <packmonlib.h>                                      // include my personal blend of herbs and spices
 
@@ -58,7 +58,7 @@ IPAddress     ntpServerIP;                                       // time.nist.go
 // RTC_DS3231    rtc;
 ESPTelnet     telnet;
 IPAddress     ip;
-I2C_eeprom    fram(0x50, I2C_DEVICESIZE_24LC64);                 // ferro-electric memory baby!
+//I2C_eeprom    fram(0x50, I2C_DEVICESIZE_24LC64);                 // ferro-electric memory baby!
 PackMonLib    toolbox;
 
 
@@ -253,20 +253,21 @@ void syncSlaveTime(uint8_t slaveAddress) {
   // telnet.println(buff);
   // toolbox.i2cWriteUlong(slaveAddress, 0x60, now());
   // i2cWriteUL(slaveAddress, 0x60, now());
-  union ulongArray buffer;
-  buffer.longNumber = now();
-  sprintf(buff, "Sennding timestamp %u to slave 0x%X", buffer.longNumber, slaveAddress);
+  // union ulongArray buffer;
+  // buffer.longNumber = now();
+  toolbox.i2cWriteUlong(slaveAddress, 0x60, now());
+  sprintf(buff, "Wrote timestamp to slave 0x%X\n", slaveAddress);
   telnet.println(buff);
-  Wire.beginTransmission(slaveAddress);               // begin transaction with slave address
-  Wire.write(0x60);                                   // send register address byte
-  for (int x = 0; x<4; x++)
-  {
-    sprintf(buff, "byte %u = 0x%X\n", x, buffer.byteArray[x]);
-    Wire.write(buffer.byteArray[x]);
-    telnet.print(buff);
-  }
-  Wire.endTransmission(true);  
-  telnet.println(" ");
+  // Wire.beginTransmission(slaveAddress);               // begin transaction with slave address
+  // Wire.write(0x60);                                   // send register address byte
+  // for (int x = 0; x<4; x++)
+  // {
+  //   sprintf(buff, "byte %u = 0x%X\n", x, buffer.byteArray[x]);
+  //   Wire.write(buffer.byteArray[x]);
+  //   telnet.print(buff);
+  // }
+  // Wire.endTransmission(true);  
+  // telnet.println(" ");
 
 }
 
