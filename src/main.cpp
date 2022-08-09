@@ -178,6 +178,8 @@ void errorMsg(String error, bool restart = true) {
   }
 }
 
+float readI2Cfloat(uint8_t clientAddr, uint8_t cmdAddr);
+
 int scanI2C() {
   byte error, address;
   int nDevices;
@@ -443,6 +445,10 @@ void setup() {
 
 uint32_t readSlaveTs(uint8_t slaveAddr);
 
+float raw2amps(uint32_t rawVal);
+float raw2volts(uint32_t rawVal, float scale);
+float raw2temp(uint32_t rawVal);
+
 void loop() {
   #ifdef ESP8266 // use esp8266 specific delay, esp32 delay at the bottom of loop()
   using periodic = esp8266::polledTimeout::periodicMs;
@@ -460,8 +466,6 @@ void loop() {
   }
 
   if (nextPing) {
-    // telnet.println("Tick");
-
     if (readTimestamps) {
       uint32_t fnctimeStamp = now();
       sprintf(buff, "Master timestamp: %u sec", fnctimeStamp);
@@ -492,37 +496,43 @@ void loop() {
     }
 
     if (readVBus) {
-     float theResult = 0.0;
-      
-      theResult = toolbox.i2cReadFloat(ClientA, 0x3E);
-      sprintf(buff, "Slave ClientA bus: %.2f volts dc", theResult);
+      float theResult = 0.0;
+      uint32_t rawAdc = 0;
+
+      rawAdc = toolbox.i2cReadUlong(ClientA, 0x3E);
+      theResult = raw2volts(rawAdc, 1.0);
+      sprintf(buff, "Slave ClientA bus: %.2f volts dc (raw %u)", theResult, rawAdc);
       telnet.println(buff);
 
-      theResult = toolbox.i2cReadFloat(ClientB, 0x3E);
-      sprintf(buff, "Slave ClientB bus: %.2f volts dc", theResult);
+      rawAdc = toolbox.i2cReadUlong(ClientB, 0x3E);
+      theResult = raw2volts(rawAdc, 1.0);
+      sprintf(buff, "Slave ClientA bus: %.2f volts dc (raw %u)", theResult, rawAdc);
       telnet.println(buff);
     }
 
     if (readVPack) {
-     float theResult = 0.0;
-      
-      theResult = toolbox.i2cReadFloat(ClientA, 0x39);
-      sprintf(buff, "Slave ClientA pack: %.2f volts dc", theResult);
+      float theResult = 0.0;
+      uint32_t rawAdc = 0;
+
+      rawAdc = toolbox.i2cReadUlong(ClientA, 0x39);
+      theResult = raw2volts(rawAdc, 1.0);
+      sprintf(buff, "Slave ClientA bus: %.2f volts dc (raw %u)", theResult, rawAdc);
       telnet.println(buff);
 
-      theResult = toolbox.i2cReadFloat(ClientB, 0x39);
-      sprintf(buff, "Slave ClientB pack: %.2f volts dc", theResult);
+      rawAdc = toolbox.i2cReadUlong(ClientB, 0x39);
+      theResult = raw2volts(rawAdc, 1.0);
+      sprintf(buff, "Slave ClientA bus: %.2f volts dc (raw %u)", theResult, rawAdc);
       telnet.println(buff);
     }
 
     if (readIPack) {
-      float theResult = 0.0;
+      uint32_t theResult = 0.0;
       
-      theResult = toolbox.i2cReadFloat(ClientA, 0x33);
+      theResult = toolbox.i2cReadUlong(ClientA, 0x33);
       sprintf(buff, "Slave ClientA load: %.2f amps", theResult);
       telnet.println(buff);
 
-      theResult = toolbox.i2cReadFloat(ClientB, 0x33);
+      theResult = toolbox.i2cReadUlong(ClientB, 0x33);
       sprintf(buff, "Slave ClientB load: %.2f amps", theResult);
       telnet.println(buff);
     }
@@ -567,4 +577,54 @@ uint32_t readSlaveTs(uint8_t slaveAddr) {
   Wire.readBytesUntil(stopChar, buffer.byteArray , readBytes);  // read five bytes or until the first null
 
   return buffer.longNumber;
+}
+
+float readI2Cfloat(uint8_t clientAddr, uint8_t cmdAddr) {
+  union ulongArray buffer;
+  const uint8_t readBytes = 4;
+  uint8_t ptr = 0;
+
+  Wire.beginTransmission(clientAddr);                          // start transaction
+  Wire.write(cmdAddr);                                        // tell slave we want to read this register
+  Wire.endTransmission(false);                                   // send instruction, retain control of bus
+  Wire.requestFrom(clientAddr, readBytes, (bool) true);   
+  while (Wire.available() && ptr < readBytes) {
+    buffer.byteArray[ptr] = Wire.read();
+  }     
+
+  return buffer.longNumber;
+}
+float raw2amps(uint32_t rawVal)
+{
+    float mvPa    = 0.136;  // 0.136v or 136mV per amp
+    float Amps    = 0.0;
+    float Volts   = 0.0;
+    float sysVcc  = 5.09;
+
+    Volts = (float)(rawVal * (sysVcc / 1024.0)) - (sysVcc / 2);
+    Amps =  (float)Volts / mvPa;
+
+    return Amps;
+}
+
+float raw2volts(uint32_t rawVal, float scale)
+{
+    float Volts   = 0.0;
+    float sysVcc  = 5.09;
+  
+    Volts = (float)(rawVal * (sysVcc / 1024.0)) / scale;
+    //Amps =  (float)Volts / acsmvA;
+    //adcDataBuffer[0].Amps  = Amps;
+    return Volts;
+}
+
+float raw2temp(uint32_t rawVal)
+{
+    float SeriesR    = 47000.0;
+    float Resistance = 0.0;
+    // convert to resistance
+    Resistance = (1024 / rawVal) - 1;
+    Resistance = SeriesR / Resistance;
+
+    return Resistance;
 }
