@@ -58,7 +58,6 @@ IPAddress     ntpServerIP;                                       // time.nist.go
 // RTC_DS3231    rtc;
 ESPTelnet     telnet;
 IPAddress     ip;
-//I2C_eeprom    fram(0x50, I2C_DEVICESIZE_24LC64);                 // ferro-electric memory baby!
 PackMonLib    toolbox;
 
 
@@ -78,34 +77,6 @@ const int ClientA                = 0x35;
 const int ClientB                = 0x36;
 char buff[100];
 // char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
-
-void framWriteFloat(int dataAddress, float framData) {
-  const uint16_t dataLen = 4;
-  union floatArray buffer;
-  buffer.floatNumber = framData;                               // convert float into byte array 
-  fram.writeBlock(dataAddress, buffer.byteArray, dataLen);
-}
-
-void framWriteUlong(int dataAddress, uint32_t framData) {
-  const uint16_t dataLen = 4;
-  union ulongArray buffer;
-  buffer.longNumber = framData;                               // convert float into byte array 
-  fram.writeBlock(dataAddress, buffer.byteArray, dataLen);
-}
-
-float framReadFloat(int dataAddress) {
-  const uint16_t dataLen = 4;
-  union floatArray buffer;
-  fram.readBlock(dataAddress, buffer.byteArray, dataLen);
-  return buffer.floatNumber;
-}
-
-uint32_t framReadUlong(int dataAddress) {
-  const uint16_t dataLen = 4;
-  union ulongArray buffer;
-  fram.readBlock(dataAddress, buffer.byteArray, dataLen);
-  return buffer.longNumber;
-}
 
 uint32_t now() {
   // uint32_t rtcTS = rtc.now().unixtime();
@@ -361,7 +332,6 @@ void setup() {
   Wire.begin(SDA_PIN, SCL_PIN);        // join i2c bus (address optional for master)
   Wire.setClock(100000);  // 100khz i2c clock
 
-  fram.begin();
 //   if (! rtc.begin()) {
 //     Serial.println("Couldn't find RTC");
 //     Serial.flush();
