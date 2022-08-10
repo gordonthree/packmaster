@@ -470,14 +470,14 @@ void loop() {
       float theResult = 0.0;
       uint32_t rawAdc = 0;
 
-      rawAdc = toolbox.i2cReadUlong(ClientA, 0x3E);
-      theResult = raw2volts(rawAdc, 1.0);
+      theResult = toolbox.i2cReadFloat(ClientA, 0x3E);
+      // theResult = raw2volts(rawAdc, 1.0);
       sprintf(buff, "Slave ClientA bus: %.2f volts dc (raw %u)", theResult, rawAdc);
       telnet.println(buff);
 
-      rawAdc = toolbox.i2cReadUlong(ClientB, 0x3E);
-      theResult = raw2volts(rawAdc, 1.0);
-      sprintf(buff, "Slave ClientA bus: %.2f volts dc (raw %u)", theResult, rawAdc);
+      theResult = toolbox.i2cReadFloat(ClientB, 0x3E);
+      // theResult = raw2volts(rawAdc, 1.0);
+      sprintf(buff, "Slave ClientB bus: %.2f volts dc (raw %u)", theResult, rawAdc);
       telnet.println(buff);
     }
 
@@ -485,47 +485,28 @@ void loop() {
       float theResult = 0.0;
       uint32_t rawAdc = 0;
 
-      rawAdc = toolbox.i2cReadUlong(ClientA, 0x39);
-      theResult = raw2volts(rawAdc, 1.0);
-      sprintf(buff, "Slave ClientA bus: %.2f volts dc (raw %u)", theResult, rawAdc);
+      theResult = toolbox.i2cReadFloat(ClientA, 0x39);
+      // theResult = raw2volts(rawAdc, 1.0);
+      sprintf(buff, "Slave ClientA pack: %.2f volts dc (raw %u)", theResult, rawAdc);
       telnet.println(buff);
 
-      rawAdc = toolbox.i2cReadUlong(ClientB, 0x39);
-      theResult = raw2volts(rawAdc, 1.0);
-      sprintf(buff, "Slave ClientA bus: %.2f volts dc (raw %u)", theResult, rawAdc);
+      theResult = toolbox.i2cReadFloat(ClientB, 0x39);
+      // theResult = raw2volts(rawAdc, 1.0);
+      sprintf(buff, "Slave ClientA pack: %.2f volts dc (raw %u)", theResult, rawAdc);
       telnet.println(buff);
     }
 
     if (readIPack) {
       uint32_t theResult = 0.0;
       
-      theResult = toolbox.i2cReadUlong(ClientA, 0x33);
+      theResult = toolbox.i2cReadFloat(ClientA, 0x33);
       sprintf(buff, "Slave ClientA load: %.2f amps", theResult);
       telnet.println(buff);
 
-      theResult = toolbox.i2cReadUlong(ClientB, 0x33);
+      theResult = toolbox.i2cReadFloat(ClientB, 0x33);
       sprintf(buff, "Slave ClientB load: %.2f amps", theResult);
       telnet.println(buff);
     }
-
-    // now try writing some data
-    //telnet.print("TX: ");
-
-    // uint32_t timeStamp = sntp_get_current_timestamp();  // grab most rececnt timestamp
-    // ltoa(timeStamp, buff, 10);                          // convert timestamp into C string
-    
-    // if (tickTock) {
-    //   Wire.beginTransmission(I2C_SLAVE);                // begin transaction with slave address
-    //   Wire.write(0x2E);                                 // register address
-    //   Wire.endTransmission(true);                       // end transaction with a stop
-    //   tickTock = false;
-    // } else {
-    //   Wire.beginTransmission(I2C_SLAVE);                // begin transaction with slave address
-    //   Wire.write(0x2F);                                 // register address
-    //   Wire.endTransmission(true);                       // end transaction with a stop   
-    //   tickTock = true;
-    // }                 
-
   }
 
   #ifdef ESP32
