@@ -29,7 +29,7 @@ NTPClient timeClient(ntpUDP);
 // #include "RTClib.h"
 
 #include "pm_struct.h"
-
+#include "pm_defs.h"
 
 #define       SERIAL_SPEED         115200
 
@@ -73,6 +73,9 @@ volatile bool readVBus           = false;
 volatile bool readTemps          = false;
 volatile bool readVPack          = false;
 volatile bool readIPack          = false;
+volatile bool readStatus         = false;
+volatile bool writeConfig        = false;
+volatile bool readConfig         = false;
 
 const int ClientA                = 0x35;
 const int ClientB                = 0x36;
@@ -278,6 +281,12 @@ void setupTelnet() {
       readUptimes = readUptimes ^ 1;
     } else if (str == "vbus") {
       readVBus = readVBus ^ 1;
+    } else if (str == "configw") {
+      writeConfig = true;
+    } else if (str == "configr") {
+      readConfig = true;
+    } else if (str == "status") {
+      readStatus = readStatus ^ 1;
     } else if (str == "vpack") {
       readVPack = readVPack ^ 1;
     } else if (str == "ipack") {
@@ -434,6 +443,77 @@ void loop() {
   }
 
   if (nextPing) {
+    if (writeConfig) {
+      writeConfig = false;
+      /*
+        #define PM_REGISTER_HIGHCURRENTLIMIT    0x21 // read / write high current cut off register
+        #define PM_REGISTER_HIGHTEMPLIMIT       0x22 // read / write high temperature cut off register
+        #define PM_REGISTER_LOWTEMPLIMIT        0x23 // read / write low temperature cut off register
+        #define PM_REGISTER_HIGHVOLTLIMIT       0x24 // read / write high voltage cut off register
+        #define PM_REGISTER_LOWVOLTLIMIT        0x25 // read / writte low voltage cut off register
+      */
+      uint8_t CONFIG0 = 0 | (
+                              1<<PM_CONFIG0_ENAOVRCURPROT |  // setup config byte
+                              1<<PM_CONFIG0_ENAOVRTMPPROT |
+                              1<<PM_CONFIG0_ENAUNDTMPPROT |
+                              1<<PM_CONFIG0_EMAUNDVLTPROT 
+                            );
+
+      double ampLimit  = 15.0;
+      double highTemp  = 65.0;
+      double lowTemp   = 0.0;
+      double highVolt  = 15.20;
+      double lowVolt   = 9.90;
+
+      telnet.print("Config ClientA... ");
+      
+      toolbox.i2cWriteUlong(ClientA, PM_REGISTER_CONFIG0BYTE, CONFIG0);
+      toolbox.i2cWriteFloat(ClientA, PM_REGISTER_HIGHCURRENTLIMIT, ampLimit);
+      toolbox.i2cWriteFloat(ClientA, PM_REGISTER_HIGHTEMPLIMIT, highTemp);
+      toolbox.i2cWriteFloat(ClientA, PM_REGISTER_LOWTEMPLIMIT, lowTemp);
+      toolbox.i2cWriteFloat(ClientA, PM_REGISTER_HIGHVOLTLIMIT, highVolt);
+      toolbox.i2cWriteFloat(ClientA, PM_REGISTER_LOWVOLTLIMIT, lowVolt);
+      
+      telnet.print("done!\nConfig ClientB... ");
+
+      toolbox.i2cWriteUlong(ClientB, PM_REGISTER_CONFIG0BYTE, CONFIG0);
+      toolbox.i2cWriteFloat(ClientB, PM_REGISTER_HIGHCURRENTLIMIT, ampLimit);
+      toolbox.i2cWriteFloat(ClientB, PM_REGISTER_HIGHTEMPLIMIT, highTemp);
+      toolbox.i2cWriteFloat(ClientB, PM_REGISTER_LOWTEMPLIMIT, lowTemp);
+      toolbox.i2cWriteFloat(ClientB, PM_REGISTER_HIGHVOLTLIMIT, highVolt);
+      toolbox.i2cWriteFloat(ClientB, PM_REGISTER_LOWVOLTLIMIT, lowVolt);
+
+      telnet.println("done!");
+
+    }
+    if (readConfig) {
+      readConfig = false;
+      uint8_t CONFIG0a = toolbox.i2cReadUlong(ClientA, PM_REGISTER_CONFIG0BYTE);
+      uint8_t CONFIG0b = toolbox.i2cReadUlong(ClientB, PM_REGISTER_CONFIG0BYTE);
+
+      sprintf(buff, "ClientA CONFIG0: 0x%X\nClientB CONFIG0: 0x%X\n", CONFIG0a, CONFIG0b);
+      telnet.print(buff);
+    }
+
+    if (readStatus) {
+      uint8_t STATUS0;
+      uint8_t STATUS1;
+      
+      STATUS0 = toolbox.i2cReadUlong(ClientA, PM_REGISTER_STATUS0BYTE);
+      STATUS1 = toolbox.i2cReadUlong(ClientA, PM_REGISTER_STATUS1BYTE);
+      telnet.print("ClientA STATUS0: 0x");
+      telnet.print(STATUS0, HEX);
+      telnet.print(" STATUS1: 0x");
+      telnet.println(STATUS1, HEX);
+
+      STATUS0 = toolbox.i2cReadUlong(ClientB, PM_REGISTER_STATUS0BYTE);
+      STATUS1 = toolbox.i2cReadUlong(ClientA, PM_REGISTER_STATUS1BYTE);
+      telnet.print("ClientB STATUS0: 0x");
+      telnet.print(STATUS0, HEX);
+      telnet.print(" STATUS1: 0x");
+      telnet.println(STATUS1, HEX);
+    }
+
     if (readTimestamps) {
       uint32_t fnctimeStamp = now();
       sprintf(buff, "Master timestamp: %u sec", fnctimeStamp);
@@ -479,7 +559,7 @@ void loop() {
     }
 
     if (readTemps) {
-      float t0, t1, t2;
+      double t0, t1, t2;
 
       t0 = toolbox.i2cReadFloat(ClientA, PM_REGISTER_READDEGCT0);
       t1 = toolbox.i2cReadFloat(ClientA, PM_REGISTER_READDEGCT1);
@@ -496,7 +576,7 @@ void loop() {
 
 
     if (readVPack) {
-      float theResult = 0.0;
+      double theResult = 0.0;
       uint32_t rawAdc = 0;
 
       theResult = toolbox.i2cReadFloat(ClientA, 0x39);
@@ -511,7 +591,7 @@ void loop() {
     }
 
     if (readIPack) {
-      uint32_t theResult = 0.0;
+      double theResult = 0.0;
       
       theResult = toolbox.i2cReadFloat(ClientA, 0x33);
       sprintf(buff, "Slave ClientA load: %.2f amps", theResult);
