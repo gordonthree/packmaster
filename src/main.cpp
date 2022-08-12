@@ -464,6 +464,10 @@ void loop() {
       double lowTemp   = 0.0;
       double highVolt  = 15.20;
       double lowVolt   = 9.90;
+      double vbusDiv   = 1.0;
+      double vpackDiv  = 0.3333;
+      double mvA       = 100;
+      double therm     = 1.0;
 
       telnet.print("Config ClientA... ");
       
@@ -473,6 +477,11 @@ void loop() {
       toolbox.i2cWriteFloat(ClientA, PM_REGISTER_LOWTEMPLIMIT, lowTemp);
       toolbox.i2cWriteFloat(ClientA, PM_REGISTER_HIGHVOLTLIMIT, highVolt);
       toolbox.i2cWriteFloat(ClientA, PM_REGISTER_LOWVOLTLIMIT, lowVolt);
+      toolbox.i2cWriteFloat(ClientA, PM_REGISTER_CURRENTMVA, mvA);
+      toolbox.i2cWriteFloat(ClientA, PM_REGISTER_VPACKDIVISOR, vpackDiv);
+      toolbox.i2cWriteFloat(ClientA, PM_REGISTER_VBUSDIVISOR, vbusDiv);
+      toolbox.i2cWriteFloat(ClientA, PM_REGISTER_THERMDIVISOR, therm);
+      
       
       telnet.print("done!\nConfig ClientB... ");
 
@@ -482,6 +491,10 @@ void loop() {
       toolbox.i2cWriteFloat(ClientB, PM_REGISTER_LOWTEMPLIMIT, lowTemp);
       toolbox.i2cWriteFloat(ClientB, PM_REGISTER_HIGHVOLTLIMIT, highVolt);
       toolbox.i2cWriteFloat(ClientB, PM_REGISTER_LOWVOLTLIMIT, lowVolt);
+      toolbox.i2cWriteFloat(ClientB, PM_REGISTER_VBUSDIVISOR, vbusDiv);
+      toolbox.i2cWriteFloat(ClientB, PM_REGISTER_VPACKDIVISOR, vpackDiv);
+      toolbox.i2cWriteFloat(ClientB, PM_REGISTER_CURRENTMVA, mvA);
+      toolbox.i2cWriteFloat(ClientB, PM_REGISTER_THERMDIVISOR, therm);
 
       telnet.println("done!");
 
