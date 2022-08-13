@@ -512,6 +512,9 @@ void loop() {
       uint8_t STATUS0;
       uint8_t STATUS1;
 
+      STATUS0 = toolbox.i2cReadUlong(ClientA, PM_REGISTER_STATUS0BYTE);
+      STATUS1 = toolbox.i2cReadUlong(ClientA, PM_REGISTER_STATUS1BYTE);
+
       sprintf(buff, "ClientA STATUS0: 0x%x STATUS1: 0x%x");
       telnet.println(buff);
 
@@ -526,6 +529,8 @@ void loop() {
       if (bitRead(STATUS0, PM_STATUS0_WARNVOLTAGE)) telnet.println("ClientA pack voltage warning");
       if (bitRead(STATUS1, PM_STATUS1_RANGEVBUS)) telnet.println("ClientA bus voltage out of range");
       
+      STATUS0 = toolbox.i2cReadUlong(ClientB, PM_REGISTER_STATUS0BYTE);
+      STATUS1 = toolbox.i2cReadUlong(ClientB, PM_REGISTER_STATUS1BYTE);
 
       sprintf(buff, "ClientB STATUS0: 0x%x STATUS1: 0x%x");
       telnet.println(buff);
