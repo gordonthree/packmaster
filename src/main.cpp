@@ -524,8 +524,8 @@ void loop() {
     }
 
     if (readStatus) {
-      uint8_t STATUS0 = readByte(ClientA, PM_REGISTER_STATUS0BYTE);
-      uint8_t STATUS1 = readByte(ClientA, PM_REGISTER_STATUS0BYTE);
+      uint8_t STATUS0 = toolbox.i2cReadByte(ClientA, PM_REGISTER_STATUS0BYTE);
+      uint8_t STATUS1 = toolbox.i2cReadByte(ClientA, PM_REGISTER_STATUS1BYTE);
 
       // STATUS0 = toolbox.i2cReadByte(ClientA, PM_REGISTER_STATUS0BYTE);
       // STATUS1 = toolbox.i2cReadByte(ClientA, PM_REGISTER_STATUS1BYTE);
@@ -533,32 +533,32 @@ void loop() {
       sprintf(buff, "ClientA STATUS0: 0x%x STATUS1: 0x%x", STATUS0, STATUS1);
       telnet.println(buff);
 
-      if (bitRead(STATUS0, PM_STATUS0_CONFIGSET)) telnet.println("ClientA has valid config");
-      else telnet.println("ClientA config is invalid");
-      if (bitRead(STATUS0, PM_STATUS0_RANGEISNS)) telnet.println("ClientA current sensor out of range");
-      if (bitRead(STATUS0, PM_STATUS0_RANGETSNS)) telnet.println("ClientA temp sensor out of range");
-      if (bitRead(STATUS0, PM_STATUS0_RANGEVSNS)) telnet.println("ClientA pack voltage sensor out of range");
-      if (bitRead(STATUS0, PM_STATUS0_TIMESET)) telnet.println("ClientA time has been set");
-      if (bitRead(STATUS0, PM_STATUS0_WARNCURRENT)) telnet.println("ClientA high current warning");
-      if (bitRead(STATUS0, PM_STATUS0_WARNTEMP)) telnet.println("ClientA temperature warning");
-      if (bitRead(STATUS0, PM_STATUS0_WARNVOLTAGE)) telnet.println("ClientA pack voltage warning");
-      if (bitRead(STATUS1, PM_STATUS1_RANGEVBUS)) telnet.println("ClientA bus voltage out of range");
+      if (bitRead(STATUS0, PM_STATUS0_CONFIGSET)) telnet.println("Configuration is set");
+      else telnet.println("Configuration is not set");
+      if (bitRead(STATUS0, PM_STATUS0_TIMESET)) telnet.println("Time has been set");
+      if (bitRead(STATUS0, PM_STATUS0_RANGEISNS)) telnet.println("Current sensor out of range");
+      if (bitRead(STATUS0, PM_STATUS0_RANGETSNS)) telnet.println("Temp sensor out of range");
+      if (bitRead(STATUS0, PM_STATUS0_RANGEVSNS)) telnet.println("Pack voltage out of range");
+      if (bitRead(STATUS1, PM_STATUS1_RANGEVBUS)) telnet.println("Bus voltage out of range");
+      if (bitRead(STATUS0, PM_STATUS0_WARNCURRENT)) telnet.println("High current warning");
+      if (bitRead(STATUS0, PM_STATUS0_WARNTEMP)) telnet.println("Pack temperature warning");
+      if (bitRead(STATUS0, PM_STATUS0_WARNVOLTAGE)) telnet.println("Pack voltage warning");
       
       STATUS0 = toolbox.i2cReadByte(ClientB, PM_REGISTER_STATUS0BYTE);
       STATUS1 = toolbox.i2cReadByte(ClientB, PM_REGISTER_STATUS1BYTE);
 
-      sprintf(buff, "ClientB STATUS0: 0x%x STATUS1: 0x%x", STATUS0, STATUS1);
+      sprintf(buff, "\nClientB STATUS0: 0x%x STATUS1: 0x%x", STATUS0, STATUS1);
       telnet.println(buff);
-      if (bitRead(STATUS0, PM_STATUS0_CONFIGSET)) telnet.println("ClientB has valid config");
-      else telnet.println("ClientB config is invalid");
-      if (bitRead(STATUS0, PM_STATUS0_RANGEISNS)) telnet.println("ClientB current sensor out of range");
-      if (bitRead(STATUS0, PM_STATUS0_RANGETSNS)) telnet.println("ClientB temp sensor out of range");
-      if (bitRead(STATUS0, PM_STATUS0_RANGEVSNS)) telnet.println("ClientB pack voltage sensor out of range");
-      if (bitRead(STATUS0, PM_STATUS0_TIMESET)) telnet.println("ClientB time has been set");
-      if (bitRead(STATUS0, PM_STATUS0_WARNCURRENT)) telnet.println("ClientB high current warning");
-      if (bitRead(STATUS0, PM_STATUS0_WARNTEMP)) telnet.println("ClientB temperature warning");
-      if (bitRead(STATUS0, PM_STATUS0_WARNVOLTAGE)) telnet.println("ClientB pack voltage warning");
-      if (bitRead(STATUS1, PM_STATUS1_RANGEVBUS)) telnet.println("ClientB bus voltage out of range");
+      if (bitRead(STATUS0, PM_STATUS0_CONFIGSET)) telnet.println("Configuration is set");
+      else telnet.println("Configuration is not set");
+      if (bitRead(STATUS0, PM_STATUS0_TIMESET)) telnet.println("Time has been set");
+      if (bitRead(STATUS0, PM_STATUS0_RANGEISNS)) telnet.println("Current sensor out of range");
+      if (bitRead(STATUS0, PM_STATUS0_RANGETSNS)) telnet.println("Temp sensor out of range");
+      if (bitRead(STATUS0, PM_STATUS0_RANGEVSNS)) telnet.println("Pack voltage out of range");
+      if (bitRead(STATUS1, PM_STATUS1_RANGEVBUS)) telnet.println("Bus voltage out of range");
+      if (bitRead(STATUS0, PM_STATUS0_WARNCURRENT)) telnet.println("High current warning");
+      if (bitRead(STATUS0, PM_STATUS0_WARNTEMP)) telnet.println("Pack temperature warning");
+      if (bitRead(STATUS0, PM_STATUS0_WARNVOLTAGE)) telnet.println("Pack voltage warning");
 
       readStatus = false;
     }
