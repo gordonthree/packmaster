@@ -26,17 +26,15 @@ typedef struct
 
 static const int eedata_size = 24;                       // save constant for size of eedata structure
 
-union EERECORD                                           // create union that converts custom structure into byte array
+union EERECORD                                           // union that converts client data structure into byte array
 {
   eedata_t data;                                         // userland data
   uint8_t  byteArray[eedata_size];                       // byte array to send over i2c or store in fram
 } ;
 typedef struct 
 {
-  uint8_t  clientAddr;                                   // i2c address for the client
-  uint32_t lastSeen;                                     // last seen timestamp for the client
-  EERECORD clientData[0x7F];                             // union containing array of all the client data
-
+  uint8_t     clientAddr;                               // i2c address for the client
+  uint32_t    lastSeen;                                 // last seen timestamp for the client
 } clientdata_t;
 
 struct ADC_DATA {
