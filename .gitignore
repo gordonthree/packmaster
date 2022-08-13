@@ -84,6 +84,6 @@ dkms.conf
 lib/packmonlib/**
 include/pm_defs.h
 lib/packmonlib/*
-lib/packmonlib
+**/packmonlib
 lib/pm_fram/*
-lib/pm_fram
+**/pm_fram
