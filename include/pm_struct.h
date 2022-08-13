@@ -17,6 +17,28 @@ struct I2C_TX_DATA {
   size_t  dataLen = 50;
 };
 
+typedef struct  
+{
+  uint32_t ts;                                             // Timestamp for when this record was created (4 bytes)
+  uint8_t  array[4];                                       // Data for this address
+  uint32_t raw;                                            // raw data storage (adc raw)
+} eedata_t;
+
+static const int eedata_size = 24;                       // save constant for size of eedata structure
+
+union EERECORD                                           // create union that converts custom structure into byte array
+{
+  eedata_t data;                                         // userland data
+  uint8_t  byteArray[eedata_size];                       // byte array to send over i2c or store in fram
+} ;
+typedef struct 
+{
+  uint8_t  clientAddr;                                   // i2c address for the client
+  uint32_t lastSeen;                                     // last seen timestamp for the client
+  EERECORD clientData[0x7F];                             // union containing array of all the client data
+
+} clientdata_t;
+
 struct ADC_DATA {
   uint8_t adcPin   = 0;                 // Arduino pin number?
   int32_t adcRaw   = 0;                 // raw value
