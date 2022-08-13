@@ -83,265 +83,26 @@ volatile bool readStatus         = false;
 volatile bool writeConfig        = false;
 volatile bool readConfig         = false;
 
-const int ClientA                = 0x35;
-const int ClientB                = 0x36;
-char buff[100];
+char          buff[100];
 
-uint8_t addClient(uint8_t clientAddr);  // add client address to the Clients list, return false if client could not be added
-void readClientArray(uint8_t clientNumber, uint8_t startReg, uint8_t stopReg); // read range of registers from clientNumber
-void refreshConfig(uint8 clientAddr);   // loop through the clients, updating our memory buffer
+uint32_t      now();
+uint8_t       addClient(uint8_t clientAddr);  // add client address to the Clients list, return false if client could not be added
+void          readClientArray(uint8_t clientNumber, uint8_t startReg, uint8_t stopReg); // read range of registers from clientNumber
+void          refreshConfig(uint8 clientAddr);   // loop through the clients, updating our memory buffer
 
-uint32_t now() {
-  // uint32_t rtcTS = rtc.now().unixtime();
-  #ifdef ESP32
-  uint32_t ntpTS = timeClient.getEpochTime();
-  #else
-  uint32_t ntpTS = sntp_get_current_timestamp();
-  #endif
+void          errorMsg(String error, bool restart = true);
+void          onTelnetConnectionAttempt(String ip);
+void          onTelnetReconnect(String ip);
+void          onTelnetDisconnect(String ip); 
+void          onTelnetConnect(String ip);
+void          printLocalTime();
+void          telnetLocalTime();
+void          syncNTP();
+int           scanI2C();
+void          syncProvider();
+void          setupTelnet();
+void          syncSlaveTime(uint8_t slaveAddress);
 
-  // if (ntpTS>rtcTS) return ntpTS;
-  // else return rtcTS;
-  return ntpTS;
-}
-
-void printLocalTime()
-{
-  time_t rawtime;
-  struct tm * timeinfo;
-  time (&rawtime);
-  timeinfo = localtime (&rawtime);
-  Serial.println(asctime(timeinfo));
-  delay(1000);
-}
-
-void telnetLocalTime()
-{
-  time_t rawtime;
-  struct tm * timeinfo;
-  time (&rawtime);
-  timeinfo = localtime (&rawtime);
-  telnet.println(asctime(timeinfo));
-}
-
-void onTelnetConnect(String ip) {
-  Serial.print("Telnet connection from ");
-  Serial.print(ip);
-  Serial.println(" connected!");
-
-  telnet.println("\n\nWelcome " + telnet.getIP());
-  telnet.println("(Use ^] + q  to disconnect.)");
-
-  telnetLocalTime();
-}
-
-void onTelnetDisconnect(String ip) {
-  Serial.print("- Telnet: ");
-  Serial.print(ip);
-  Serial.println(" disconnected");
-}
-
-void onTelnetReconnect(String ip) {
-  Serial.print("- Telnet: ");
-  Serial.print(ip);
-  Serial.println(" reconnected");
-}
-
-void onTelnetConnectionAttempt(String ip) {
-  Serial.print("- Telnet: ");
-  Serial.print(ip);
-  Serial.println(" tried to connected");
-}
-
-void errorMsg(String error, bool restart = true) {
-  Serial.println(error);
-  if (restart) {
-    Serial.println("Rebooting now...");
-    delay(2000);
-    ESP.restart();
-    delay(2000);
-  }
-}
-
-
-int scanI2C() {
-  byte error, address;
-  int nDevices;
-
-  telnet.println("Scanning...");
-
-  nDevices = 0;
-  for(address = 1; address < 127; address++ ) {
-    Wire.beginTransmission(address);
-    error = Wire.endTransmission();
-
-    if (error == 0)
-    {
-      telnet.print("I2C device found at address 0x");
-      if (address<16) 
-      telnet.print("0");
-      telnet.print(address,HEX);
-      telnet.println(" !");
-
-      nDevices++;
-    }
-     else if (error==4) 
-    {
-      telnet.print("Unknow error at address 0x");
-      if (address<16) 
-      telnet.print("0");
-      telnet.println(address,HEX);
-    } 
-  }
-  
-  if (nDevices == 0)
-    telnet.println("No I2C devices found\n");
-  else
-    telnet.println("done\n");
- 
-  return nDevices;
-}
-
-void syncNTP() {
-  // uint32_t rtcTS = rtc.now().unixtime();
-  #ifdef ESP32
-  uint32_t ntpTS = timeClient.getEpochTime();
-  #else
-  uint32_t ntpTS = sntp_get_current_timestamp();
-  #endif
-  
-  // sprintf(buff, "RTC time is %u\nNTP time is %u", rtcTS, ntpTS);
-  sprintf(buff, "NTP time is %u\n", ntpTS);
-  telnet.println(buff);
-
-  // if ((ntpTS / 10)!=(rtcTS / 10)) {
-  //   rtc.adjust(DateTime(ntpTS)); // set rtc time using ntp timestamp?
-  //   telnet.println("Copied NTP time to RTC, retesting.");
-
-  //   rtcTS = rtc.now().unixtime();
-  //   #ifdef ESP32
-  //   uint32_t ntpTS = timeClient.getEpochTime();
-  //   #else
-  //   uint32_t ntpTS = sntp_get_current_timestamp();
-  //   #endif
-
-  //   sprintf(buff, "RTC time is %u\nNTP time is %u", rtcTS, ntpTS);
-  //   telnet.println(buff);
-  // } else {
-  //   telnet.println("Clocks match, no update needed.");
-  // }
-}
-
-void syncSlaveTime(uint8_t slaveAddress) {
-  // sprintf(buff, "Sending time to slave 0x%X", slaveAddress);
-  // telnet.println(buff);
-  // toolbox.i2cWriteUlong(slaveAddress, 0x60, now());
-  // i2cWriteUL(slaveAddress, 0x60, now());
-  // union ulongArray buffer;
-  // buffer.longNumber = now();
-  toolbox.i2cWriteUlong(slaveAddress, 0x60, now());
-  sprintf(buff, "Wrote timestamp to slave 0x%X\n", slaveAddress);
-  telnet.println(buff);
-  // Wire.beginTransmission(slaveAddress);               // begin transaction with slave address
-  // Wire.write(0x60);                                   // send register address byte
-  // for (int x = 0; x<4; x++)
-  // {
-  //   sprintf(buff, "byte %u = 0x%X\n", x, buffer.byteArray[x]);
-  //   Wire.write(buffer.byteArray[x]);
-  //   telnet.print(buff);
-  // }
-  // Wire.endTransmission(true);  
-  // telnet.println(" ");
-
-}
-
-
-void setupTelnet() {  
-  // passing on functions for various telnet events
-  telnet.onConnect(onTelnetConnect);
-  telnet.onConnectionAttempt(onTelnetConnectionAttempt);
-  telnet.onReconnect(onTelnetReconnect);
-  telnet.onDisconnect(onTelnetDisconnect);
-  
-  // passing a lambda function
-  telnet.onInputReceived([](String str) {
-    // checks for a certain command
-    if (str == "ping") {
-      telnet.println("> pong");
-      Serial.println("- Telnet: pong");
-    // disconnect the client
-    } else if (str == "ts") {
-      readTimestamps = readTimestamps ^ 1;
-    } else if (str == "time") {
-      union ulongArray buffer;
-      buffer.longNumber = now();
-      telnet.println("Timestamp bytes:");
-      for (int x = 0; x<4; x++)
-      {
-        sprintf(buff, "byte %u = 0x%X\n", x, buffer.byteArray[x]);
-        telnet.print(buff);
-      }
-      telnet.println(" ");
-    } else if (str == "temps") {
-      readTemps = readTemps ^ 1;
-    } else if (str == "dump") {
-      toolbox.i2cWriteUlong(ClientA, 0x77,0);
-      toolbox.i2cWriteUlong(ClientB, 0x77,0);
-    } else if (str == "up") {
-      readUptimes = readUptimes ^ 1;
-    } else if (str == "vbus") {
-      readVBus = readVBus ^ 1;
-    } else if (str == "configw") {
-      writeConfig = true;
-    } else if (str == "configr") {
-      readConfig = true;
-    } else if (str == "status") {
-      readStatus = readStatus ^ 1;
-    } else if (str == "vpack") {
-      readVPack = readVPack ^ 1;
-    } else if (str == "ipack") {
-      readIPack = readIPack ^ 1;
-    } else if (str == "scan") {
-      if ((digitalRead(BUS_RDY)!=HIGH) && (digitalRead(CLI_ENABLE)==HIGH)) telnet.println("Error condition detected on client bus.");
-      else if (digitalRead(CLI_ENABLE)!=HIGH) telnet.println("Client bus not enabled!");
-      scanI2C();
-    } else if (str == "sync") {
-      syncNTP();
-    } else if (str == "set") {
-      syncSlaveTime(ClientA);
-      syncSlaveTime(ClientB);
-      lasttimeSync = now();                           // update last sync timestamp
-    } else if (str == "cli+") {
-      telnet.println("Enabling hotswap buffer.");
-      digitalWrite(CLI_ENABLE, HIGH);                 // enable drivers on hotswap buffer
-      delay(1);
-
-      if (digitalRead(BUS_RDY)!=HIGH) telnet.println("Hotswap buffer reports client bus not ready, disconnected from client bus.");
-      else telnet.println("Hotswap buffer has been enabled, client bus available.");
-    } else if (str == "cli-") {
-      digitalWrite(CLI_ENABLE, LOW);
-      delay(1);
-
-      if (digitalRead(BUS_RDY)==HIGH) telnet.println("Hot swap buffer disabled, client bus remains available.");
-      else telnet.println("Hotswap buffer has been disabled, client bus unavailable.");
-      
-    } else if (str == "bye") {
-      telnet.println("> good bye...");
-      telnet.disconnectClient();
-      }
-  });
-
-  Serial.print("- Telnet: ");
-  if (telnet.begin(port)) {
-    Serial.println("running");
-  } else {
-    Serial.println("error.");
-    errorMsg("Will reboot...");
-  }
-}
-
-void syncProvider() {
-  configTime(gmtOffset_sec, daylightOffset_sec, ntpServerName);
-}
 
 void setup() {
   pinMode(BUS_RDY, INPUT);
@@ -368,7 +129,6 @@ void setup() {
     delay(5000);
     ESP.restart();
   }
-
 
   setupTelnet();
 
@@ -423,7 +183,9 @@ void setup() {
   telnet.println("Ready");
   telnet.print("IP address: ");
   telnet.println(WiFi.localIP());
-  
+
+  if (addClient(0x35)!=0xFF) telnet.println("Registered client at address 0x35");
+  if (addClient(0x36)!=0xFF) telnet.println("Registered client at address 0x36");
 }
 
 #ifndef ESP8266
@@ -739,4 +501,232 @@ uint8_t addClient(uint8_t clientAddr)
   }
 
   return success;                       // return 0xFF if we didn't find an open slot
+}
+
+uint32_t now() 
+{
+  // uint32_t rtcTS = rtc.now().unixtime();
+  #ifdef ESP32
+  uint32_t ntpTS = timeClient.getEpochTime();
+  #else
+  uint32_t ntpTS = sntp_get_current_timestamp();
+  #endif
+
+  // if (ntpTS>rtcTS) return ntpTS;
+  // else return rtcTS;
+  return ntpTS;
+}
+
+void printLocalTime()
+{
+  time_t rawtime;
+  struct tm * timeinfo;
+  time (&rawtime);
+  timeinfo = localtime (&rawtime);
+  Serial.println(asctime(timeinfo));
+  delay(1000);
+}
+
+void telnetLocalTime()
+{
+  time_t rawtime;
+  struct tm * timeinfo;
+  time (&rawtime);
+  timeinfo = localtime (&rawtime);
+  telnet.println(asctime(timeinfo));
+}
+
+
+void onTelnetConnect(String ip) 
+{
+  Serial.print("Telnet connection from ");
+  Serial.print(ip);
+  Serial.println(" connected!");
+
+  telnet.println("\n\nWelcome " + telnet.getIP());
+  telnet.println("(Use ^] + q  to disconnect.)");
+
+  telnetLocalTime();
+}
+
+void onTelnetDisconnect(String ip) 
+{
+  Serial.print("- Telnet: ");
+  Serial.print(ip);
+  Serial.println(" disconnected");
+}
+
+void onTelnetReconnect(String ip) 
+{
+  Serial.print("- Telnet: ");
+  Serial.print(ip);
+  Serial.println(" reconnected");
+}
+
+void onTelnetConnectionAttempt(String ip) 
+{
+  Serial.print("- Telnet: ");
+  Serial.print(ip);
+  Serial.println(" tried to connected");
+}
+
+void errorMsg(String error, bool restart = true) 
+{
+  Serial.println(error);
+  if (restart) {
+    Serial.println("Rebooting now...");
+    delay(2000);
+    ESP.restart();
+    delay(2000);
+  }
+}
+
+int scanI2C() 
+{
+  byte error, address;
+  int nDevices;
+
+  telnet.println("Scanning...");
+
+  nDevices = 0;
+  for(address = 1; address < 127; address++ ) {
+    Wire.beginTransmission(address);
+    error = Wire.endTransmission();
+
+    if (error == 0)
+    {
+      telnet.print("I2C device found at address 0x");
+      if (address<16) 
+      telnet.print("0");
+      telnet.print(address,HEX);
+      telnet.println(" !");
+
+      nDevices++;
+    }
+     else if (error==4) 
+    {
+      telnet.print("Unknow error at address 0x");
+      if (address<16) 
+      telnet.print("0");
+      telnet.println(address,HEX);
+    } 
+  }
+  
+  if (nDevices == 0)
+    telnet.println("No I2C devices found\n");
+  else
+    telnet.println("done\n");
+ 
+  return nDevices;
+}
+
+void syncNTP() 
+{
+  // uint32_t rtcTS = rtc.now().unixtime();
+  #ifdef ESP32
+  uint32_t ntpTS = timeClient.getEpochTime();
+  #else
+  uint32_t ntpTS = sntp_get_current_timestamp();
+  #endif
+  
+  // sprintf(buff, "RTC time is %u\nNTP time is %u", rtcTS, ntpTS);
+  sprintf(buff, "NTP time is %u\n", ntpTS);
+  telnet.println(buff);
+}
+
+void syncSlaveTime(uint8_t slaveAddress) 
+{
+  toolbox.i2cWriteUlong(slaveAddress, 0x60, now());
+  sprintf(buff, "Wrote timestamp to slave 0x%X\n", slaveAddress);
+  telnet.println(buff);
+}
+
+void setupTelnet() 
+{  
+  // passing on functions for various telnet events
+  telnet.onConnect(onTelnetConnect);
+  telnet.onConnectionAttempt(onTelnetConnectionAttempt);
+  telnet.onReconnect(onTelnetReconnect);
+  telnet.onDisconnect(onTelnetDisconnect);
+  
+  // passing a lambda function
+  telnet.onInputReceived([](String str) {
+    // checks for a certain command
+    if (str == "ping") {
+      telnet.println("> pong");
+      Serial.println("- Telnet: pong");
+    // disconnect the client
+    } else if (str == "ts") {
+      readTimestamps = readTimestamps ^ 1;
+    } else if (str == "time") {
+      union ulongArray buffer;
+      buffer.longNumber = now();
+      telnet.println("Timestamp bytes:");
+      for (int x = 0; x<4; x++)
+      {
+        sprintf(buff, "byte %u = 0x%X\n", x, buffer.byteArray[x]);
+        telnet.print(buff);
+      }
+      telnet.println(" ");
+    } else if (str == "temps") {
+      readTemps = readTemps ^ 1;
+    } else if (str == "dump") {
+      toolbox.i2cWriteUlong(ClientA, 0x77,0);
+      toolbox.i2cWriteUlong(ClientB, 0x77,0);
+    } else if (str == "up") {
+      readUptimes = readUptimes ^ 1;
+    } else if (str == "vbus") {
+      readVBus = readVBus ^ 1;
+    } else if (str == "configw") {
+      writeConfig = true;
+    } else if (str == "configr") {
+      readConfig = true;
+    } else if (str == "status") {
+      readStatus = readStatus ^ 1;
+    } else if (str == "vpack") {
+      readVPack = readVPack ^ 1;
+    } else if (str == "ipack") {
+      readIPack = readIPack ^ 1;
+    } else if (str == "scan") {
+      if ((digitalRead(BUS_RDY)!=HIGH) && (digitalRead(CLI_ENABLE)==HIGH)) telnet.println("Error condition detected on client bus.");
+      else if (digitalRead(CLI_ENABLE)!=HIGH) telnet.println("Client bus not enabled!");
+      scanI2C();
+    } else if (str == "sync") {
+      syncNTP();
+    } else if (str == "set") {
+      syncSlaveTime(ClientA);
+      syncSlaveTime(ClientB);
+      lasttimeSync = now();                           // update last sync timestamp
+    } else if (str == "cli+") {
+      telnet.println("Enabling hotswap buffer.");
+      digitalWrite(CLI_ENABLE, HIGH);                 // enable drivers on hotswap buffer
+      delay(1);
+
+      if (digitalRead(BUS_RDY)!=HIGH) telnet.println("Hotswap buffer reports client bus not ready, disconnected from client bus.");
+      else telnet.println("Hotswap buffer has been enabled, client bus available.");
+    } else if (str == "cli-") {
+      digitalWrite(CLI_ENABLE, LOW);
+      delay(1);
+
+      if (digitalRead(BUS_RDY)==HIGH) telnet.println("Hot swap buffer disabled, client bus remains available.");
+      else telnet.println("Hotswap buffer has been disabled, client bus unavailable.");
+      
+    } else if (str == "bye") {
+      telnet.println("> good bye...");
+      telnet.disconnectClient();
+      }
+  });
+
+  Serial.print("- Telnet: ");
+  if (telnet.begin(port)) {
+    Serial.println("running");
+  } else {
+    Serial.println("error.");
+    errorMsg("Will reboot...");
+  }
+}
+
+void syncProvider() 
+{
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServerName);
 }
