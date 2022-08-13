@@ -45,16 +45,18 @@ NTPClient timeClient(ntpUDP);
 const char*   ssid               = STASSID;
 const char*   password           = STAPSK;
 
-const char*   ntpServerName      = "pool.ntp.org";               // NTP server name
-const long    gmtOffset_sec      = -14400;                       // Replace with your GMT offset (seconds)
-const int     daylightOffset_sec = 0;                            // Replace with your daylight offset (seconds)
+const char*   ntpServerName      = "pool.ntp.org";              // NTP server name
+const long    gmtOffset_sec      = -14400;                      // Replace with your GMT offset (seconds)
+const int     daylightOffset_sec = 0;                           // Replace with your daylight offset (seconds)
 
 
 //const uint8_t I2C_MASTER         = 0x42;
 
+static const uint8_t maxClients  = 4;                           // maximum number of clients we can handle
+clientdata_t  Clients[4];                                       // array to hold data from X clients
 
 String        newHostname        = "packmaster";
-IPAddress     ntpServerIP;                                       // time.nist.gov NTP server address
+IPAddress     ntpServerIP;                                      // time.nist.gov NTP server address
 
 // RTC_DS3231    rtc;
 ESPTelnet     telnet;
@@ -81,7 +83,10 @@ volatile bool readConfig         = false;
 const int ClientA                = 0x35;
 const int ClientB                = 0x36;
 char buff[100];
-// char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+
+uint8_t addClient(uint8_t clientAddr);  // add client address to the Clients list, return false if client could not be added
+void readClientArray(uint8_t clientNumber, uint8_t startReg, uint8_t stopReg); // read range of registers from clientNumber
+void refreshConfig(uint8 clientAddr);   // loop through the clients, updating our memory buffer
 
 uint32_t now() {
   // uint32_t rtcTS = rtc.now().unixtime();
@@ -427,21 +432,6 @@ float raw2amps(uint32_t rawVal);
 float raw2volts(uint32_t rawVal, float scale);
 double raw2temp(uint32_t rawVal);
 
-uint8_t readByte(uint8_t clientAddr, uint8_t cmdAddr)
-{
-  const char stopChar = '\0';
-  const uint8_t readBytes = 1;
-  uint8_t byteArray[4] = {0,0,0,0};
-  uint8_t result = 0;
-  Wire.beginTransmission(clientAddr);                          // start transaction
-  Wire.write(cmdAddr);                                        // tell slave we want to read this register
-  Wire.endTransmission(false);                                   // send instruction, retain control of bus
-  Wire.requestFrom(clientAddr, readBytes, (bool) true);        // request 6 bytes from slave device and then release bus
-  Wire.readBytes(byteArray, readBytes);
-  // Wire.readBytesUntil(stopChar, byteArray , readBytes);    // read five bytes or until the first null
-  return byteArray[0];
-};
-
 void loop() {
   #ifdef ESP8266 // use esp8266 specific delay, esp32 delay at the bottom of loop()
   using periodic = esp8266::polledTimeout::periodicMs;
@@ -696,8 +686,52 @@ float raw2volts(uint32_t rawVal, float scale)
 *
 */
 double raw2temp(uint32_t adc_value){
- 
   /* Read values directly from the table. */
   return (double) NTC_table[ adc_value ] / 1000.0;
 };
 
+void readClientArray(uint8_t clientNumber, uint8_t startReg, uint8_t stopReg)
+{
+  uint8_t  clientAddr = Clients[clientNumber].clientAddr;                                // Get client's i2c address
+  Wire.beginTransmission(clientAddr);                                                    // start transaction
+
+  for (uint8_t cmdAddress = startReg; cmdAddress < stopReg+1; cmdAddress++)                       // step through several registers get all the data
+  {
+    Wire.write(cmdAddress);                                                              // tell slave we want to read this register
+    Wire.endTransmission(false);                                                         // send instruction, retain control of bus, no stop
+    if (cmdAddress==stopReg)                                                             // if we're making our last request, let go of the bus
+      Wire.requestFrom(clientAddr, eedata_size, (bool) true);                            // request 6 bytes from slave device and then send stop
+    else                                                                                 // keep control of bus until we are finished
+      Wire.requestFrom(clientAddr, eedata_size, (bool) false);                           // request 6 bytes from slave device and keep control of bus
+    Wire.readBytes(Clients[clientNumber].clientData[cmdAddress].byteArray, eedata_size); // read i2c bus data into memory
+  }
+}
+
+void refreshConfig() // read several records from the client to update our in-ram register 
+{
+  for (int clientNumber = 0; clientNumber < maxClients; clientNumber++)
+  {
+    Clients[clientNumber].lastSeen = now();          // record last update time
+    readClientArray(clientNumber, 0x21, 0x2e);
+    readClientArray(clientNumber, 0x32, 0x3b);
+    readClientArray(clientNumber, 0x41, 0x49);
+    readClientArray(clientNumber, 0x50, 0x55);
+
+
+  }
+}
+
+uint8_t addClient(uint8_t clientAddr)
+{
+  uint8_t success = 0xFF;
+  for (int i = 0; i < maxClients; i++ )
+  {
+    if (Clients->clientAddr==0)         // find an unused slot
+    {
+      Clients->clientAddr = clientAddr; // assign client to this slot
+      success = i;                      // return this to caller, the client position in the array
+    }
+  }
+
+  return success;                       // return 0xFF if we didn't find an open slot
+}
