@@ -541,15 +541,6 @@ void loop() {
       if (bitRead(STATUS1, PM_STATUS1_RANGEVBUS)) telnet.println("ClientB bus voltage out of range");
 
       readStatus = false;
-
-
-
-      STATUS0 = toolbox.i2cReadUlong(ClientB, PM_REGISTER_STATUS0BYTE);
-      STATUS1 = toolbox.i2cReadUlong(ClientA, PM_REGISTER_STATUS1BYTE);
-      telnet.print("ClientB STATUS0: 0x");
-      telnet.print(STATUS0, HEX);
-      telnet.print(" STATUS1: 0x");
-      telnet.println(STATUS1, HEX);
     }
 
     if (readTimestamps) {
