@@ -52,8 +52,10 @@ const int     daylightOffset_sec = 0;                           // Replace with 
 
 //const uint8_t I2C_MASTER         = 0x42;
 
-static const uint8_t maxClients  = 4;                           // maximum number of clients we can handle
-clientdata_t  Clients[4];                                       // array to hold data from X clients
+static const uint8_t maxClients          = 4;                   // maximum number of clients we can handle
+clientdata_t Clients                     [maxClients];          // array to match client number with address and last-seen timestamp
+FRAMSTORAGE  fram                        [maxClients];          // array to hold data from X clients
+static const uint8_t ee_register_cnt     = 0x7f;                // total number of registers of client data
 
 String        newHostname        = "packmaster";
 IPAddress     ntpServerIP;                                      // time.nist.gov NTP server address
@@ -63,12 +65,13 @@ ESPTelnet     telnet;
 IPAddress     ip;
 PackMonLib    toolbox;
 
+uint8_t       clientCount        = 0;
 
 uint16_t      port               = 23;
 uint16_t      loopCnt            = 0;                            // loop counter to update slave time
+uint16_t      timesyncInterval   = 600;                          // sync time every 600 seconds, 10 minutes
 
 uint32_t      lasttimeSync       = 0;                            // when did we last send slaves the time?
-uint16_t      timesyncInterval   = 600;                          // sync time every 600 seconds, 10 minutes
 
 volatile bool readTimestamps     = false;
 volatile bool readUptimes        = false;
@@ -600,18 +603,17 @@ void loop() {
 
     if (readTemps) {
       double t0, t1, t2;
+      uint32_t ts;
 
-      t0 = toolbox.i2cReadFloat(ClientA, PM_REGISTER_READDEGCT0);
-      t1 = toolbox.i2cReadFloat(ClientA, PM_REGISTER_READDEGCT1);
-      t2 = toolbox.i2cReadFloat(ClientA, PM_REGISTER_READDEGCT2);
-      sprintf(buff, "Slave ClientA t0: %.2f°C t1: %.2f°C t2: %.2f°C", t0, t1, t2);
-      telnet.println(buff);
-
-      t0 = toolbox.i2cReadFloat(ClientB, PM_REGISTER_READDEGCT0);
-      t1 = toolbox.i2cReadFloat(ClientB, PM_REGISTER_READDEGCT1);
-      t2 = toolbox.i2cReadFloat(ClientB, PM_REGISTER_READDEGCT2);
-      sprintf(buff, "Slave ClientB t0: %.2f°C t1: %.2f°C t2: %.2f°C", t0, t1, t2);
-      telnet.println(buff);
+      for (int i=0; i<clientCount; i++)
+      {
+        ts = fram[i].getTimeStamp(PM_REGISTER_READDEGCT0);
+        t0 = fram[i].getDataDouble(PM_REGISTER_READDEGCT0);
+        t1 = fram[i].getDataDouble(PM_REGISTER_READDEGCT0);
+        t1 = fram[i].getDataDouble(PM_REGISTER_READDEGCT0);
+        sprintf(buff, "Client %u t0: %.2f°C t1: %.2f°C t2: %.2f°C as of %u", i, t0, t1, t2, ts);
+        telnet.println(buff);
+      }
     }
 
 
@@ -691,11 +693,13 @@ double raw2temp(uint32_t adc_value){
 };
 
 void readClientArray(uint8_t clientNumber, uint8_t startReg, uint8_t stopReg)
-{
-  uint8_t  clientAddr = Clients[clientNumber].clientAddr;                                // Get client's i2c address
+{ 
+  uint8_t byteArray[24];
+  uint8_t clientAddr = Clients[clientNumber].clientAddr;                                 // Get client's i2c address
+
   Wire.beginTransmission(clientAddr);                                                    // start transaction
 
-  for (uint8_t cmdAddress = startReg; cmdAddress < stopReg+1; cmdAddress++)                       // step through several registers get all the data
+  for (uint8_t cmdAddress = startReg; cmdAddress < stopReg+1; cmdAddress++)              // step through several registers to get all the data
   {
     Wire.write(cmdAddress);                                                              // tell slave we want to read this register
     Wire.endTransmission(false);                                                         // send instruction, retain control of bus, no stop
@@ -703,7 +707,9 @@ void readClientArray(uint8_t clientNumber, uint8_t startReg, uint8_t stopReg)
       Wire.requestFrom(clientAddr, eedata_size, (bool) true);                            // request 6 bytes from slave device and then send stop
     else                                                                                 // keep control of bus until we are finished
       Wire.requestFrom(clientAddr, eedata_size, (bool) false);                           // request 6 bytes from slave device and keep control of bus
-    Wire.readBytes(Clients[clientNumber].clientData[cmdAddress].byteArray, eedata_size); // read i2c bus data into memory
+    Wire.readBytes(byteArray, eedata_size);                                              // read i2c bus data into memory
+    // Clients[clientNumber] addArrayData(cmdAddress, byteArray);
+    fram[clientNumber].addArrayData(cmdAddress, byteArray);                              // add data to class array
   }
 }
 
@@ -716,8 +722,6 @@ void refreshConfig() // read several records from the client to update our in-ra
     readClientArray(clientNumber, 0x32, 0x3b);
     readClientArray(clientNumber, 0x41, 0x49);
     readClientArray(clientNumber, 0x50, 0x55);
-
-
   }
 }
 
@@ -730,6 +734,7 @@ uint8_t addClient(uint8_t clientAddr)
     {
       Clients->clientAddr = clientAddr; // assign client to this slot
       success = i;                      // return this to caller, the client position in the array
+      clientCount++;                    // increase client counter
     }
   }
 
