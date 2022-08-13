@@ -426,6 +426,21 @@ float raw2amps(uint32_t rawVal);
 float raw2volts(uint32_t rawVal, float scale);
 double raw2temp(uint32_t rawVal);
 
+uint8_t readByte(uint8_t clientAddr, uint8_t cmdAddr)
+{
+  const char stopChar = '\0';
+  const uint8_t readBytes = 1;
+  uint8_t byteArray[4] = {0,0,0,0};
+  uint8_t result = 0;
+  Wire.beginTransmission(clientAddr);                          // start transaction
+  Wire.write(cmdAddr);                                        // tell slave we want to read this register
+  Wire.endTransmission(false);                                   // send instruction, retain control of bus
+  Wire.requestFrom(clientAddr, readBytes, (bool) true);        // request 6 bytes from slave device and then release bus
+  Wire.readBytes(byteArray, readBytes);
+  // Wire.readBytesUntil(stopChar, byteArray , readBytes);    // read five bytes or until the first null
+  return byteArray[0];
+};
+
 void loop() {
   #ifdef ESP8266 // use esp8266 specific delay, esp32 delay at the bottom of loop()
   using periodic = esp8266::polledTimeout::periodicMs;
@@ -501,21 +516,21 @@ void loop() {
     }
     if (readConfig) {
       readConfig = false;
-      uint8_t CONFIG0a = toolbox.i2cReadUlong(ClientA, PM_REGISTER_CONFIG0BYTE);
-      uint8_t CONFIG0b = toolbox.i2cReadUlong(ClientB, PM_REGISTER_CONFIG0BYTE);
+      uint8_t CONFIG0a = toolbox.i2cReadByte(ClientA, PM_REGISTER_CONFIG0BYTE);
+      uint8_t CONFIG0b = toolbox.i2cReadByte(ClientB, PM_REGISTER_CONFIG0BYTE);
 
       sprintf(buff, "ClientA CONFIG0: 0x%X\nClientB CONFIG0: 0x%X\n", CONFIG0a, CONFIG0b);
       telnet.print(buff);
     }
 
     if (readStatus) {
-      uint8_t STATUS0;
-      uint8_t STATUS1;
+      uint8_t STATUS0 = readByte(ClientA, PM_REGISTER_STATUS0BYTE);
+      uint8_t STATUS1 = readByte(ClientA, PM_REGISTER_STATUS0BYTE);
 
-      STATUS0 = toolbox.i2cReadUlong(ClientA, PM_REGISTER_STATUS0BYTE);
-      STATUS1 = toolbox.i2cReadUlong(ClientA, PM_REGISTER_STATUS1BYTE);
+      // STATUS0 = toolbox.i2cReadByte(ClientA, PM_REGISTER_STATUS0BYTE);
+      // STATUS1 = toolbox.i2cReadByte(ClientA, PM_REGISTER_STATUS1BYTE);
 
-      sprintf(buff, "ClientA STATUS0: 0x%x STATUS1: 0x%x");
+      sprintf(buff, "ClientA STATUS0: 0x%x STATUS1: 0x%x", STATUS0, STATUS1);
       telnet.println(buff);
 
       if (bitRead(STATUS0, PM_STATUS0_CONFIGSET)) telnet.println("ClientA has valid config");
@@ -529,10 +544,10 @@ void loop() {
       if (bitRead(STATUS0, PM_STATUS0_WARNVOLTAGE)) telnet.println("ClientA pack voltage warning");
       if (bitRead(STATUS1, PM_STATUS1_RANGEVBUS)) telnet.println("ClientA bus voltage out of range");
       
-      STATUS0 = toolbox.i2cReadUlong(ClientB, PM_REGISTER_STATUS0BYTE);
-      STATUS1 = toolbox.i2cReadUlong(ClientB, PM_REGISTER_STATUS1BYTE);
+      STATUS0 = toolbox.i2cReadByte(ClientB, PM_REGISTER_STATUS0BYTE);
+      STATUS1 = toolbox.i2cReadByte(ClientB, PM_REGISTER_STATUS1BYTE);
 
-      sprintf(buff, "ClientB STATUS0: 0x%x STATUS1: 0x%x");
+      sprintf(buff, "ClientB STATUS0: 0x%x STATUS1: 0x%x", STATUS0, STATUS1);
       telnet.println(buff);
       if (bitRead(STATUS0, PM_STATUS0_CONFIGSET)) telnet.println("ClientB has valid config");
       else telnet.println("ClientB config is invalid");
