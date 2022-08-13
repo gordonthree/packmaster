@@ -30,6 +30,7 @@ NTPClient timeClient(ntpUDP);
 #include "packmonlib.h"                                     // include my personal blend of herbs and spices
 #include "pm_struct.h"
 #include "pm_defs.h"
+#include "pm_fram.h"
 
 #define       SERIAL_SPEED         115200
 
