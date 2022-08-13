@@ -75,9 +75,8 @@ uint32_t      lasttimeSync       = 0;                            // when did we 
 
 volatile bool readTimestamps     = false;
 volatile bool readUptimes        = false;
-volatile bool readVBus           = false;
+volatile bool readVolts          = false;
 volatile bool readTemps          = false;
-volatile bool readVPack          = false;
 volatile bool readIPack          = false;
 volatile bool readStatus         = false;
 volatile bool writeConfig        = false;
@@ -101,8 +100,14 @@ void          syncNTP();
 int           scanI2C();
 void          syncProvider();
 void          setupTelnet();
-void          syncSlaveTime(uint8_t slaveAddress);
-
+void          syncClientTime();
+void          configClients();
+void          printClientconfigs();
+void          printClientstatus();
+void          printClienttimes();
+void          printClientuptimes();
+void          printClienttemps();
+void          printClientvolts();
 
 void setup() {
   pinMode(BUS_RDY, INPUT);
@@ -204,178 +209,47 @@ void loop() {
   #endif
   uint32_t timeStamp = now();
 
-  telnet.loop();  // handle telnet events
+  telnet.loop();        // handle telnet events
   ArduinoOTA.handle();  // handle OTA events
 
-  if (timeStamp > lasttimeSync + timesyncInterval) {    // check to see if we need to refresh the time on slaves
-    syncSlaveTime(ClientA);
-    syncSlaveTime(ClientB);
-    lasttimeSync = now();                           // update last sync timestamp
+  if (timeStamp > lasttimeSync + timesyncInterval) {    // check to see if we need to refresh the time on clients
+    syncClientTime();
+    lasttimeSync = now();                               // update last sync timestamp
   }
 
   if (nextPing) {
     if (writeConfig) {
+      configClients();
       writeConfig = false;
-      /*
-        #define PM_REGISTER_HIGHCURRENTLIMIT    0x21 // read / write high current cut off register
-        #define PM_REGISTER_HIGHTEMPLIMIT       0x22 // read / write high temperature cut off register
-        #define PM_REGISTER_LOWTEMPLIMIT        0x23 // read / write low temperature cut off register
-        #define PM_REGISTER_HIGHVOLTLIMIT       0x24 // read / write high voltage cut off register
-        #define PM_REGISTER_LOWVOLTLIMIT        0x25 // read / writte low voltage cut off register
-      */
-      uint8_t CONFIG0 = 0 | (
-                              1<<PM_CONFIG0_ENAOVRCURPROT |  // setup config byte
-                              1<<PM_CONFIG0_ENAOVRTMPPROT |
-                              1<<PM_CONFIG0_ENAUNDTMPPROT |
-                              1<<PM_CONFIG0_EMAUNDVLTPROT 
-                            );
-
-      double ampLimit  = 15.0;
-      double highTemp  = 65.0;
-      double lowTemp   = 0.0;
-      double highVolt  = 15.20;
-      double lowVolt   = 9.90;
-      double vbusDiv   = 1.0;
-      double vpackDiv  = 0.3333;
-      double mvA       = 100;
-      double therm     = 1.0;
-
-      telnet.print("Config ClientA... ");
-      
-      toolbox.i2cWriteUlong(ClientA, PM_REGISTER_CONFIG0BYTE, CONFIG0);
-      toolbox.i2cWriteFloat(ClientA, PM_REGISTER_HIGHCURRENTLIMIT, ampLimit);
-      toolbox.i2cWriteFloat(ClientA, PM_REGISTER_HIGHTEMPLIMIT, highTemp);
-      toolbox.i2cWriteFloat(ClientA, PM_REGISTER_LOWTEMPLIMIT, lowTemp);
-      toolbox.i2cWriteFloat(ClientA, PM_REGISTER_HIGHVOLTLIMIT, highVolt);
-      toolbox.i2cWriteFloat(ClientA, PM_REGISTER_LOWVOLTLIMIT, lowVolt);
-      toolbox.i2cWriteFloat(ClientA, PM_REGISTER_CURRENTMVA, mvA);
-      toolbox.i2cWriteFloat(ClientA, PM_REGISTER_VPACKDIVISOR, vpackDiv);
-      toolbox.i2cWriteFloat(ClientA, PM_REGISTER_VBUSDIVISOR, vbusDiv);
-      toolbox.i2cWriteFloat(ClientA, PM_REGISTER_THERMDIVISOR, therm);
-      
-      
-      telnet.print("done!\nConfig ClientB... ");
-
-      toolbox.i2cWriteUlong(ClientB, PM_REGISTER_CONFIG0BYTE, CONFIG0);
-      toolbox.i2cWriteFloat(ClientB, PM_REGISTER_HIGHCURRENTLIMIT, ampLimit);
-      toolbox.i2cWriteFloat(ClientB, PM_REGISTER_HIGHTEMPLIMIT, highTemp);
-      toolbox.i2cWriteFloat(ClientB, PM_REGISTER_LOWTEMPLIMIT, lowTemp);
-      toolbox.i2cWriteFloat(ClientB, PM_REGISTER_HIGHVOLTLIMIT, highVolt);
-      toolbox.i2cWriteFloat(ClientB, PM_REGISTER_LOWVOLTLIMIT, lowVolt);
-      toolbox.i2cWriteFloat(ClientB, PM_REGISTER_VBUSDIVISOR, vbusDiv);
-      toolbox.i2cWriteFloat(ClientB, PM_REGISTER_VPACKDIVISOR, vpackDiv);
-      toolbox.i2cWriteFloat(ClientB, PM_REGISTER_CURRENTMVA, mvA);
-      toolbox.i2cWriteFloat(ClientB, PM_REGISTER_THERMDIVISOR, therm);
-
-      telnet.println("done!");
-
     }
     if (readConfig) {
+      printClientconfigs();
       readConfig = false;
-      uint8_t CONFIG0a = toolbox.i2cReadByte(ClientA, PM_REGISTER_CONFIG0BYTE);
-      uint8_t CONFIG0b = toolbox.i2cReadByte(ClientB, PM_REGISTER_CONFIG0BYTE);
-
-      sprintf(buff, "ClientA CONFIG0: 0x%X\nClientB CONFIG0: 0x%X\n", CONFIG0a, CONFIG0b);
-      telnet.print(buff);
     }
 
     if (readStatus) {
-      uint8_t STATUS0 = toolbox.i2cReadByte(ClientA, PM_REGISTER_STATUS0BYTE);
-      uint8_t STATUS1 = toolbox.i2cReadByte(ClientA, PM_REGISTER_STATUS1BYTE);
-
-      // STATUS0 = toolbox.i2cReadByte(ClientA, PM_REGISTER_STATUS0BYTE);
-      // STATUS1 = toolbox.i2cReadByte(ClientA, PM_REGISTER_STATUS1BYTE);
-
-      sprintf(buff, "ClientA STATUS0: 0x%x STATUS1: 0x%x", STATUS0, STATUS1);
-      telnet.println(buff);
-
-      if (bitRead(STATUS0, PM_STATUS0_CONFIGSET)) telnet.println("Configuration is set");
-      else telnet.println("Configuration is not set");
-      if (bitRead(STATUS0, PM_STATUS0_TIMESET)) telnet.println("Time has been set");
-      if (bitRead(STATUS0, PM_STATUS0_RANGEISNS)) telnet.println("Current sensor out of range");
-      if (bitRead(STATUS0, PM_STATUS0_RANGETSNS)) telnet.println("Temp sensor out of range");
-      if (bitRead(STATUS0, PM_STATUS0_RANGEVSNS)) telnet.println("Pack voltage out of range");
-      if (bitRead(STATUS1, PM_STATUS1_RANGEVBUS)) telnet.println("Bus voltage out of range");
-      if (bitRead(STATUS0, PM_STATUS0_WARNCURRENT)) telnet.println("High current warning");
-      if (bitRead(STATUS0, PM_STATUS0_WARNTEMP)) telnet.println("Pack temperature warning");
-      if (bitRead(STATUS0, PM_STATUS0_WARNVOLTAGE)) telnet.println("Pack voltage warning");
-      
-      STATUS0 = toolbox.i2cReadByte(ClientB, PM_REGISTER_STATUS0BYTE);
-      STATUS1 = toolbox.i2cReadByte(ClientB, PM_REGISTER_STATUS1BYTE);
-
-      sprintf(buff, "\nClientB STATUS0: 0x%x STATUS1: 0x%x", STATUS0, STATUS1);
-      telnet.println(buff);
-      if (bitRead(STATUS0, PM_STATUS0_CONFIGSET)) telnet.println("Configuration is set");
-      else telnet.println("Configuration is not set");
-      if (bitRead(STATUS0, PM_STATUS0_TIMESET)) telnet.println("Time has been set");
-      if (bitRead(STATUS0, PM_STATUS0_RANGEISNS)) telnet.println("Current sensor out of range");
-      if (bitRead(STATUS0, PM_STATUS0_RANGETSNS)) telnet.println("Temp sensor out of range");
-      if (bitRead(STATUS0, PM_STATUS0_RANGEVSNS)) telnet.println("Pack voltage out of range");
-      if (bitRead(STATUS1, PM_STATUS1_RANGEVBUS)) telnet.println("Bus voltage out of range");
-      if (bitRead(STATUS0, PM_STATUS0_WARNCURRENT)) telnet.println("High current warning");
-      if (bitRead(STATUS0, PM_STATUS0_WARNTEMP)) telnet.println("Pack temperature warning");
-      if (bitRead(STATUS0, PM_STATUS0_WARNVOLTAGE)) telnet.println("Pack voltage warning");
-
+      printClientstatus();
       readStatus = false;
     }
 
     if (readTimestamps) {
-      uint32_t fnctimeStamp = now();
-      sprintf(buff, "Master timestamp: %u sec", fnctimeStamp);
-      telnet.println(buff);
-
-      uint32_t theResult = 0;
-      
-      //theResult = i2cReadUL(ClientA, 0x62);
-      theResult = toolbox.i2cReadUlong(ClientA, 0x62);
-      sprintf(buff, "Slave ClientA timestamp: %u sec", theResult);
-      telnet.println(buff);
-
-      theResult = toolbox.i2cReadUlong(ClientB, 0x62);
-      sprintf(buff, "Slave ClientB timestamp: %u sec", theResult);
-      telnet.println(buff);
+      printClienttimes();
+      readTimestamps = false;
     }
 
     if (readUptimes) {
-      uint32_t theResult = 0;
-      
-      theResult = toolbox.i2cReadUlong(ClientA, 0x64);
-      sprintf(buff, "Slave ClientA uptime: %u sec", theResult);
-      telnet.println(buff);
-
-      theResult = toolbox.i2cReadUlong(ClientB, 0x64);
-      sprintf(buff, "Slave ClientB uptime: %u sec", theResult);
-      telnet.println(buff);
+      printClientuptimes();
+      readUptimes = false;
     }
 
-    if (readVBus) {
-      float theResult = 0.0;
-      uint32_t rawAdc = 0;
-
-      theResult = toolbox.i2cReadFloat(ClientA, PM_REGISTER_READBUSVOLTS);
-      // theResult = raw2volts(rawAdc, 1.0);
-      sprintf(buff, "Slave ClientA bus: %.2f volts dc (raw %u)", theResult, rawAdc);
-      telnet.println(buff);
-
-      theResult = toolbox.i2cReadFloat(ClientB, PM_REGISTER_READBUSVOLTS);
-      // theResult = raw2volts(rawAdc, 1.0);
-      sprintf(buff, "Slave ClientB bus: %.2f volts dc (raw %u)", theResult, rawAdc);
-      telnet.println(buff);
+    if (readVolts) {
+      printClientvolts();
+      readVBus = false;
     }
 
     if (readTemps) {
-      double t0, t1, t2;
-      uint32_t ts;
-
-      for (int i=0; i<clientCount; i++)
-      {
-        ts = fram[i].getTimeStamp(PM_REGISTER_READDEGCT0);
-        t0 = fram[i].getDataDouble(PM_REGISTER_READDEGCT0);
-        t1 = fram[i].getDataDouble(PM_REGISTER_READDEGCT0);
-        t1 = fram[i].getDataDouble(PM_REGISTER_READDEGCT0);
-        sprintf(buff, "Client %u t0: %.2f°C t1: %.2f°C t2: %.2f°C as of %u", i, t0, t1, t2, ts);
-        telnet.println(buff);
-      }
+      printClienttemps();
+      readTemps = false;
     }
 
 
@@ -452,7 +326,7 @@ float raw2volts(uint32_t rawVal, float scale)
 double raw2temp(uint32_t adc_value){
   /* Read values directly from the table. */
   return (double) NTC_table[ adc_value ] / 1000.0;
-};
+}
 
 void readClientArray(uint8_t clientNumber, uint8_t startReg, uint8_t stopReg)
 { 
@@ -634,11 +508,15 @@ void syncNTP()
   telnet.println(buff);
 }
 
-void syncSlaveTime(uint8_t slaveAddress) 
+void syncClientTime() 
 {
-  toolbox.i2cWriteUlong(slaveAddress, 0x60, now());
-  sprintf(buff, "Wrote timestamp to slave 0x%X\n", slaveAddress);
-  telnet.println(buff);
+  for (int i = 0; i < clientCount; i++)
+  {
+    uint8_t clientAddr = Clients[i].clientAddr;
+    toolbox.i2cWriteUlong(clientAddr, PM_REGISTER_SETEPOCHTIME, now());
+    sprintf(buff, "Wrote timestamp to client 0x%X\n", clientAddr);
+    telnet.println(buff);
+  }
 }
 
 void setupTelnet() 
@@ -671,8 +549,8 @@ void setupTelnet()
     } else if (str == "temps") {
       readTemps = readTemps ^ 1;
     } else if (str == "dump") {
-      toolbox.i2cWriteUlong(ClientA, 0x77,0);
-      toolbox.i2cWriteUlong(ClientB, 0x77,0);
+      toolbox.i2cWriteUlong(0x35, 0x77,0);
+      toolbox.i2cWriteUlong(0x36, 0x77,0);
     } else if (str == "up") {
       readUptimes = readUptimes ^ 1;
     } else if (str == "vbus") {
@@ -729,4 +607,204 @@ void setupTelnet()
 void syncProvider() 
 {
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServerName);
+}
+
+void configClients()
+{
+  /*
+    #define PM_REGISTER_HIGHCURRENTLIMIT    0x21 // read / write high current cut off register
+    #define PM_REGISTER_HIGHTEMPLIMIT       0x22 // read / write high temperature cut off register
+    #define PM_REGISTER_LOWTEMPLIMIT        0x23 // read / write low temperature cut off register
+    #define PM_REGISTER_HIGHVOLTLIMIT       0x24 // read / write high voltage cut off register
+    #define PM_REGISTER_LOWVOLTLIMIT        0x25 // read / writte low voltage cut off register
+  */
+  uint8_t CONFIG0 = 0 | (
+                          1<<PM_CONFIG0_ENAOVRCURPROT |  // setup config byte
+                          1<<PM_CONFIG0_ENAOVRTMPPROT |
+                          1<<PM_CONFIG0_ENAUNDTMPPROT |
+                          1<<PM_CONFIG0_EMAUNDVLTPROT 
+                        );
+  uint32_t ts       = now();
+  double   ampLimit = 15.0;
+  double   highTemp = 65.0;
+  double   lowTemp  = 0.0;
+  double   highVolt = 15.20;
+  double   lowVolt  = 9.90;
+  double   vbusDiv  = 1.0;
+  double   vpackDiv = 0.3333;
+  double   mvA      = 100;
+  double   vtmpDiv    = 1.0;
+
+  for (int i = 0; i < clientCount; i++)
+  {
+    uint8_t clientAddr  = Clients[i].clientAddr;
+    Clients[i].lastSeen = ts;
+    sprintf(buff, "Updating config for client #%u at address 0x%x\n", i, clientAddr);
+    telnet.print(buff);
+    
+    // first update in ram cache, then write to the clients
+    fram[i].addByte  (PM_REGISTER_CONFIG0BYTE,      ts, CONFIG0);
+    fram[i].addDouble(PM_REGISTER_HIGHCURRENTLIMIT, ts, ampLimit);
+    fram[i].addDouble(PM_REGISTER_HIGHTEMPLIMIT,    ts,highTemp);
+    fram[i].addDouble(PM_REGISTER_LOWTEMPLIMIT,     ts, lowTemp);
+    fram[i].addDouble(PM_REGISTER_HIGHVOLTLIMIT,    ts, highVolt);
+    fram[i].addDouble(PM_REGISTER_LOWVOLTLIMIT,     ts, lowVolt);
+    fram[i].addDouble(PM_REGISTER_CURRENTMVA,       ts, mvA);
+    fram[i].addDouble(PM_REGISTER_VPACKDIVISOR,     ts, vpackDiv);
+    fram[i].addDouble(PM_REGISTER_VBUSDIVISOR,      ts, vbusDiv);
+    fram[i].addDouble(PM_REGISTER_THERMDIVISOR,     ts, vtmpDiv);
+
+    toolbox.i2cWriteByte (clientAddr, PM_REGISTER_CONFIG0BYTE, CONFIG0);
+    toolbox.i2cWriteUlong(clientAddr, PM_REGISTER_HIGHCURRENTLIMIT, ampLimit);
+    toolbox.i2cWriteUlong(clientAddr, PM_REGISTER_HIGHTEMPLIMIT, highTemp);
+    toolbox.i2cWriteUlong(clientAddr, PM_REGISTER_LOWTEMPLIMIT, lowTemp);
+    toolbox.i2cWriteUlong(clientAddr, PM_REGISTER_HIGHVOLTLIMIT, highVolt);
+    toolbox.i2cWriteUlong(clientAddr, PM_REGISTER_LOWVOLTLIMIT, lowVolt);
+    toolbox.i2cWriteUlong(clientAddr, PM_REGISTER_CURRENTMVA, mvA);
+    toolbox.i2cWriteUlong(clientAddr, PM_REGISTER_VPACKDIVISOR, vpackDiv);
+    toolbox.i2cWriteUlong(clientAddr, PM_REGISTER_VBUSDIVISOR, vbusDiv);
+    toolbox.i2cWriteUlong(clientAddr, PM_REGISTER_THERMDIVISOR, vtmpDiv);
+  }
+
+}
+
+void printClientconfigs()
+{
+  for (int i = 0; i < clientCount; i++)
+  {
+    uint8_t  clientAddr = Clients[i].clientAddr;
+    uint32_t ts         = fram[i].getTimeStamp(PM_REGISTER_CONFIG0BYTE);
+    sprintf(buff, "Configuration of client #%u (0x%x) as of %u:\n", i, clientAddr, ts);
+    telnet.print(buff);
+
+    uint8_t CONFIG0  = fram[i].getDataByte(PM_REGISTER_CONFIG0BYTE);
+    double  ampLimit = fram[i].getDataDouble(PM_REGISTER_HIGHCURRENTLIMIT);
+    double  highTemp = fram[i].getDataDouble(PM_REGISTER_HIGHTEMPLIMIT);   
+    double  lowTemp  = fram[i].getDataDouble(PM_REGISTER_LOWTEMPLIMIT);  
+    double  highVolt = fram[i].getDataDouble(PM_REGISTER_HIGHVOLTLIMIT);   
+    double  lowVolt  = fram[i].getDataDouble(PM_REGISTER_LOWVOLTLIMIT);    
+    double  vbusDiv  = fram[i].getDataDouble(PM_REGISTER_CURRENTMVA);   
+    double  vpackDiv = fram[i].getDataDouble(PM_REGISTER_VPACKDIVISOR);    
+    double  vtmpDiv  = fram[i].getDataDouble(PM_REGISTER_THERMDIVISOR);
+    double  mvA      = fram[i].getDataDouble(PM_REGISTER_VBUSDIVISOR);   
+    
+    sprintf(buff, "Register contents of CONFIG0: 0x%x", CONFIG0);
+    telnet.println(buff);
+
+    sprintf(buff, "High current limit is %.3f amps.", ampLimit);
+    telnet.println(buff);
+
+    sprintf(buff, "Temperature limit is %.3f to %.3f", lowTemp, highTemp);
+    telnet.println(buff);
+
+    sprintf(buff, "Pack voltage limit is %.3f to %.3f", lowVolt, highVolt);
+    telnet.println(buff);
+
+    sprintf(buff, "Divisor: bus voltage: %.3f pack voltage: %.3f temp sensor: %.3f", vbusDiv, vpackDiv, vtmpDiv);
+    telnet.println(buff);
+
+    sprintf(buff, "Current sensor millivolts per amp multiplier is %.3f", mvA);
+    telnet.println(buff);
+
+  }
+}
+
+void printClientstatus()
+{
+  for (int i=0; i<clientCount; i++)
+  {
+    uint8_t  clientAddr = Clients[i].clientAddr;
+    uint32_t ts         = fram[i].getTimeStamp(PM_REGISTER_STATUS0BYTE);
+    uint8_t  STATUS0    = fram[i].getDataByte(PM_REGISTER_STATUS0BYTE);
+    uint8_t  STATUS1    = fram[i].getDataByte(PM_REGISTER_STATUS1BYTE);
+
+    sprintf(buff, "Status of client #%u (0x%x) as of %u.\nSTATUS0: 0x%x STATUS1: 0x%x", i, clientAddr, ts, STATUS0, STATUS1);
+    telnet.println(buff);
+
+    if (bitRead(STATUS0, PM_STATUS0_CONFIGSET)) telnet.println("Configuration is set");
+    else telnet.println("Configuration is not set");
+    if (bitRead(STATUS0, PM_STATUS0_TIMESET)) telnet.println("Time has been set");
+    if (bitRead(STATUS0, PM_STATUS0_RANGEISNS)) telnet.println("Current sensor out of range");
+    if (bitRead(STATUS0, PM_STATUS0_RANGETSNS)) telnet.println("Temp sensor out of range");
+    if (bitRead(STATUS0, PM_STATUS0_RANGEVSNS)) telnet.println("Pack voltage out of range");
+    if (bitRead(STATUS1, PM_STATUS1_RANGEVBUS)) telnet.println("Bus voltage out of range");
+    if (bitRead(STATUS0, PM_STATUS0_WARNCURRENT)) telnet.println("High current warning");
+    if (bitRead(STATUS0, PM_STATUS0_WARNTEMP)) telnet.println("Pack temperature warning");
+    if (bitRead(STATUS0, PM_STATUS0_WARNVOLTAGE)) telnet.println("Pack voltage warning");
+    
+    telnet.println("");
+  }
+}
+void printClienttimes()
+{
+  for (int i=0; i<clientCount; i++)
+  {
+    uint8_t  clientAddr = Clients[i].clientAddr;
+    uint32_t ts         = toolbox.i2cReadUlong(clientAddr, PM_REGISTER_CURRENTTIME);
+
+    sprintf(buff, "Client #%u (0x%x) %u", i, clientAddr, ts);
+    telnet.println(buff);
+  }
+}
+
+void printClientuptimes()
+{
+  for (int i=0; i<clientCount; i++)
+  {
+    uint8_t  clientAddr = Clients[i].clientAddr;
+    uint32_t ts         = toolbox.i2cReadUlong(clientAddr, PM_REGISTER_UPTIME);
+
+    sprintf(buff, "Client #%u (0x%x) uptime %u", i, clientAddr, ts);
+    telnet.println(buff);
+  }
+}
+
+void printClienttemps()
+{
+  double t0, t0H, t0L;
+  double t1, t1H, t1L;
+  double t2, t2H, t2L;
+  uint32_t ts;
+  uint8_t ca;
+
+  for (int i=0; i<clientCount; i++)
+  {
+    ca = Clients[i].clientAddr;
+    ts = fram[i].getTimeStamp(PM_REGISTER_READDEGCT0);
+    t0 = fram[i].getDataDouble(PM_REGISTER_READDEGCT0);
+    t0H = fram[i].getDataDouble(PM_REGISTER_READT0HIGH);
+    t0L = fram[i].getDataDouble(PM_REGISTER_READT0LOW);
+    t1 = fram[i].getDataDouble(PM_REGISTER_READDEGCT1);
+    t1H = fram[i].getDataDouble(PM_REGISTER_READT1HIGH);
+    t1L = fram[i].getDataDouble(PM_REGISTER_READT1LOW);
+    t2 = fram[i].getDataDouble(PM_REGISTER_READDEGCT2);
+    t2H = fram[i].getDataDouble(PM_REGISTER_READT2HIGH);
+    t2L = fram[i].getDataDouble(PM_REGISTER_READT2LOW);
+    sprintf(buff, "Client %u (0x%x) as of %u: t0: %.2f°C t0 low: %.2f°C t0 high: %.2f°C", i, ca, t0, t0L, t0H);
+    telnet.println(buff);
+    sprintf(buff, "Client %u (0x%x) as of %u: t1: %.2f°C t1 low: %.2f°C t1 high: %.2f°C", i, ca, t1, t1L, t1H);
+    telnet.println(buff);
+    sprintf(buff, "Client %u (0x%x) as of %u: t2: %.2f°C t2 low: %.2f°C t2 high: %.2f°C", i, ca, t2, t2L, t2H);
+    telnet.println(buff);
+  }
+}
+
+void printClientvolts()
+{
+  double vB, vP, vPH, vPL;
+  uint32_t ts;
+  uint8_t ca;
+
+  for (int i=0; i<clientCount; i++)
+  {
+    ca  = Clients[i].clientAddr;
+    ts  = fram[i].getTimeStamp(PM_REGISTER_READBUSVOLTS);
+    vB  = fram[i].getDataDouble(PM_REGISTER_READBUSVOLTS);
+    vP  = fram[i].getDataDouble(PM_REGISTER_READPACKVOLTS);
+    vPH = fram[i].getDataDouble(PM_REGISTER_READHIVOLTS);
+    vPL = fram[i].getDataDouble(PM_REGISTER_READLOWVOLTS);
+
+    sprintf(buff, "Client %u (0x%x) as of %u: vBus: %.2fv vPack: %.2fv pack high: %.2fv pack low: %.2f", i, ca, ts, vB, vP, vPH, vPL);
+    telnet.println(buff);
+  }
 }
