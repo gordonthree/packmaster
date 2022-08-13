@@ -83,3 +83,5 @@ dkms.conf
 .vscode/c_cpp_properties.json
 lib/packmonlib/**
 include/pm_defs.h
+lib/packmonlib/*
+lib/packmonlib
