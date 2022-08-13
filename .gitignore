@@ -85,3 +85,5 @@ lib/packmonlib/**
 include/pm_defs.h
 lib/packmonlib/*
 lib/packmonlib
+lib/pm_fram/*
+lib/pm_fram
