@@ -19,13 +19,7 @@ NTPClient timeClient(ntpUDP);
 #include <Wire.h>
 
 #include <time.h>
-// #include <I2C_eeprom.h>
-
-
-//#include  <SPI.h>
-//#include "TimeLib.h"
 #include <sntp.h>
-// #include "RTClib.h"
 
 #include "packmonlib.h"                                     // include my personal blend of herbs and spices
 #include "pm_struct.h"
@@ -77,7 +71,7 @@ volatile bool readTimestamps     = false;
 volatile bool readUptimes        = false;
 volatile bool readVolts          = false;
 volatile bool readTemps          = false;
-volatile bool readIPack          = false;
+volatile bool readLoad           = false;
 volatile bool readStatus         = false;
 volatile bool writeConfig        = false;
 volatile bool readConfig         = false;
@@ -86,10 +80,12 @@ char          buff[100];
 
 uint32_t      now();
 uint8_t       addClient(uint8_t clientAddr);  // add client address to the Clients list, return false if client could not be added
+float         raw2amps(uint32_t rawVal);
+float         raw2volts(uint32_t rawVal, float scale);
+double        raw2temp(uint32_t rawVal);
 void          readClientArray(uint8_t clientNumber, uint8_t startReg, uint8_t stopReg); // read range of registers from clientNumber
 void          refreshConfig(uint8 clientAddr);   // loop through the clients, updating our memory buffer
-
-void          errorMsg(String error, bool restart = true);
+void          errorMsg(String error, bool restart);
 void          onTelnetConnectionAttempt(String ip);
 void          onTelnetReconnect(String ip);
 void          onTelnetDisconnect(String ip); 
@@ -108,8 +104,10 @@ void          printClienttimes();
 void          printClientuptimes();
 void          printClienttemps();
 void          printClientvolts();
+void          printClientloads();
 
-void setup() {
+void setup() 
+{
   pinMode(BUS_RDY, INPUT);
   pinMode(CLI_ENABLE, OUTPUT);
   
@@ -191,18 +189,14 @@ void setup() {
 
   if (addClient(0x35)!=0xFF) telnet.println("Registered client at address 0x35");
   if (addClient(0x36)!=0xFF) telnet.println("Registered client at address 0x36");
-}
+} // end setup
 
 #ifndef ESP8266
   const bool nextPing = true;
 #endif
 
-
-float raw2amps(uint32_t rawVal);
-float raw2volts(uint32_t rawVal, float scale);
-double raw2temp(uint32_t rawVal);
-
-void loop() {
+void loop() 
+{
   #ifdef ESP8266 // use esp8266 specific delay, esp32 delay at the bottom of loop()
   using periodic = esp8266::polledTimeout::periodicMs;
   static periodic nextPing(1000);
@@ -244,7 +238,7 @@ void loop() {
 
     if (readVolts) {
       printClientvolts();
-      readVBus = false;
+      readVolts = false;
     }
 
     if (readTemps) {
@@ -252,34 +246,11 @@ void loop() {
       readTemps = false;
     }
 
-
-    if (readVPack) {
-      double theResult = 0.0;
-      uint32_t rawAdc = 0;
-
-      theResult = toolbox.i2cReadFloat(ClientA, 0x39);
-      // theResult = raw2volts(rawAdc, 1.0);
-      sprintf(buff, "Slave ClientA pack: %.2f volts dc (raw %u)", theResult, rawAdc);
-      telnet.println(buff);
-
-      theResult = toolbox.i2cReadFloat(ClientB, 0x39);
-      // theResult = raw2volts(rawAdc, 1.0);
-      sprintf(buff, "Slave ClientB pack: %.2f volts dc (raw %u)", theResult, rawAdc);
-      telnet.println(buff);
+    if (readLoad) {
+      printClientloads();
+      readLoad = false;
     }
-
-    if (readIPack) {
-      double theResult = 0.0;
-      
-      theResult = toolbox.i2cReadFloat(ClientA, 0x33);
-      sprintf(buff, "Slave ClientA load: %.2f amps", theResult);
-      telnet.println(buff);
-
-      theResult = toolbox.i2cReadFloat(ClientB, 0x33);
-      sprintf(buff, "Slave ClientB load: %.2f amps", theResult);
-      telnet.println(buff);
-    }
-  }
+  } // end of nextping
 
   #ifdef ESP32
   for (int xcnt = 0; xcnt < 1000; xcnt++) {
@@ -323,7 +294,8 @@ float raw2volts(uint32_t rawVal, float scale)
 * \return              The temperature in 0.1 °C
 *
 */
-double raw2temp(uint32_t adc_value){
+double raw2temp(uint32_t adc_value)
+{
   /* Read values directly from the table. */
   return (double) NTC_table[ adc_value ] / 1000.0;
 }
@@ -444,7 +416,7 @@ void onTelnetConnectionAttempt(String ip)
   Serial.println(" tried to connected");
 }
 
-void errorMsg(String error, bool restart = true) 
+void errorMsg(String error, bool restart) 
 {
   Serial.println(error);
   if (restart) {
@@ -549,22 +521,20 @@ void setupTelnet()
     } else if (str == "temps") {
       readTemps = readTemps ^ 1;
     } else if (str == "dump") {
-      toolbox.i2cWriteUlong(0x35, 0x77,0);
-      toolbox.i2cWriteUlong(0x36, 0x77,0);
+      toolbox.i2cWriteUlong(0x35, 0x77, 0);
+      toolbox.i2cWriteUlong(0x36, 0x77, 0);
     } else if (str == "up") {
       readUptimes = readUptimes ^ 1;
-    } else if (str == "vbus") {
-      readVBus = readVBus ^ 1;
+    } else if (str == "volts") {
+      readVolts = readVolts ^ 1;
     } else if (str == "configw") {
       writeConfig = true;
     } else if (str == "configr") {
       readConfig = true;
     } else if (str == "status") {
       readStatus = readStatus ^ 1;
-    } else if (str == "vpack") {
-      readVPack = readVPack ^ 1;
-    } else if (str == "ipack") {
-      readIPack = readIPack ^ 1;
+    } else if (str == "load") {
+      readLoad = readLoad ^ 1;
     } else if (str == "scan") {
       if ((digitalRead(BUS_RDY)!=HIGH) && (digitalRead(CLI_ENABLE)==HIGH)) telnet.println("Error condition detected on client bus.");
       else if (digitalRead(CLI_ENABLE)!=HIGH) telnet.println("Client bus not enabled!");
@@ -572,8 +542,7 @@ void setupTelnet()
     } else if (str == "sync") {
       syncNTP();
     } else if (str == "set") {
-      syncSlaveTime(ClientA);
-      syncSlaveTime(ClientB);
+      syncClientTime();
       lasttimeSync = now();                           // update last sync timestamp
     } else if (str == "cli+") {
       telnet.println("Enabling hotswap buffer.");
@@ -600,7 +569,7 @@ void setupTelnet()
     Serial.println("running");
   } else {
     Serial.println("error.");
-    errorMsg("Will reboot...");
+    errorMsg("Will reboot...", true);
   }
 }
 
@@ -782,8 +751,10 @@ void printClienttemps()
     t2L = fram[i].getDataDouble(PM_REGISTER_READT2LOW);
     sprintf(buff, "Client %u (0x%x) as of %u: t0: %.2f°C t0 low: %.2f°C t0 high: %.2f°C", i, ca, t0, t0L, t0H);
     telnet.println(buff);
+
     sprintf(buff, "Client %u (0x%x) as of %u: t1: %.2f°C t1 low: %.2f°C t1 high: %.2f°C", i, ca, t1, t1L, t1H);
     telnet.println(buff);
+
     sprintf(buff, "Client %u (0x%x) as of %u: t2: %.2f°C t2 low: %.2f°C t2 high: %.2f°C", i, ca, t2, t2L, t2H);
     telnet.println(buff);
   }
@@ -805,6 +776,25 @@ void printClientvolts()
     vPL = fram[i].getDataDouble(PM_REGISTER_READLOWVOLTS);
 
     sprintf(buff, "Client %u (0x%x) as of %u: vBus: %.2fv vPack: %.2fv pack high: %.2fv pack low: %.2f", i, ca, ts, vB, vP, vPH, vPL);
+    telnet.println(buff);
+  }
+}
+
+void printClientloads()
+{
+  double i, iH, iL;
+  uint32_t ts;
+  uint8_t ca;
+
+  for (int i=0; i<clientCount; i++)
+  {
+    ca  = Clients[i].clientAddr;
+    ts  = fram[i].getTimeStamp(PM_REGISTER_READLOADAMPS);
+    i  = fram[i].getDataDouble(PM_REGISTER_READLOADAMPS);
+    // iH = fram[i].getDataDouble(PM_REGISTER_READ);
+    // iL = fram[i].getDataDouble(PM_REGISTER_READLOWVOLTS);
+
+    sprintf(buff, "Client %u (0x%x) as of %u: load amps: %.2fv", i, ca, ts, iL);
     telnet.println(buff);
   }
 }
