@@ -186,9 +186,6 @@ void setup()
   telnet.println("Ready");
   telnet.print("IP address: ");
   telnet.println(WiFi.localIP());
-
-  if (addClient(0x35)!=0xFF) telnet.println("Registered client at address 0x35");
-  if (addClient(0x36)!=0xFF) telnet.println("Registered client at address 0x36");
 } // end setup
 
 #ifndef ESP8266
@@ -336,11 +333,19 @@ void refreshConfig() // read several records from the client to update our in-ra
 uint8_t addClient(uint8_t clientAddr)
 {
   uint8_t success = 0xFF;
+  
+  // first search array to see if client already exists
   for (int i = 0; i < maxClients; i++ )
   {
-    if (Clients->clientAddr==0)         // find an unused slot
+    if (Clients[i].clientAddr==clientAddr) return i; // if match, bail out, return index for existing client
+
+  }
+
+  for (int i = 0; i < maxClients; i++ )
+  {
+    if (Clients[i].clientAddr==0)       // find an unused slot
     {
-      Clients->clientAddr = clientAddr; // assign client to this slot
+      Clients[i].clientAddr = clientAddr; // assign client to this slot
       success = i;                      // return this to caller, the client position in the array
       clientCount++;                    // increase client counter
     }
@@ -520,6 +525,9 @@ void setupTelnet()
       telnet.println(" ");
     } else if (str == "temps") {
       readTemps = readTemps ^ 1;
+    } else if (str == "register") {
+      if (addClient(0x35)!=0xFF) telnet.println("Registered client at address 0x35");
+      if (addClient(0x36)!=0xFF) telnet.println("Registered client at address 0x36");
     } else if (str == "dump") {
       toolbox.i2cWriteUlong(0x35, 0x77, 0);
       toolbox.i2cWriteUlong(0x36, 0x77, 0);
