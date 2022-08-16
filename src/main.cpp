@@ -96,7 +96,7 @@ void          syncNTP();                                                        
 int           scanI2C();                                                                // scan i2c bus
 void          syncProvider();                                                           // used by time library to keep clock set
 void          setupTelnet();                                                            // setup telnet port
-void          syncClientTime();                                                         // send time to the clients
+void          syncClientTime(uint8_t clientNumber);                                     // send time to the clients
 void          configClients();                                                          // send base config to the clients
 void          printClientconfigs();                                                     // print base config of the clients to telnet
 void          printClientstatus();                                                      // print client status to telnet
@@ -205,63 +205,54 @@ void loop()
 {
   #ifdef ESP8266 // use esp8266 specific delay, esp32 delay at the bottom of loop()
   using periodic = esp8266::polledTimeout::periodicMs;
-  static periodic nextPing(1000);
+  static periodic nextPing(2500);
   #endif
-  uint32_t timeStamp = now();
 
   telnet.loop();        // handle telnet events
   ArduinoOTA.handle();  // handle OTA events
 
-  if (timeStamp > lasttimeSync + timesyncInterval) {    // check to see if we need to refresh the time on clients
-    syncClientTime();
-    lasttimeSync = now();                               // update last sync timestamp
+  if (writeConfig) {
+    configClients();
+    writeConfig = false;
+  }
+  if (readConfig) {
+    printClientconfigs();
+    readConfig = false;
+  }
+
+  if (readStatus) {
+    printClientstatus();
+    readStatus = false;
+  }
+
+  if (readTimestamps) {
+    printClienttimes();
+    readTimestamps = false;
+  }
+
+  if (readUptimes) {
+    printClientuptimes();
+    readUptimes = false;
   }
 
   if (nextPing) {
-    // refreshClients();                                   // pull updated information from connected clients
-
-    if (writeConfig) {
-      configClients();
-      writeConfig = false;
-    }
-    if (readConfig) {
-      printClientconfigs();
-      readConfig = false;
-    }
-
-    if (readStatus) {
-      printClientstatus();
-      readStatus = false;
-    }
-
-    if (readTimestamps) {
-      printClienttimes();
-      readTimestamps = false;
-    }
-
-    if (readUptimes) {
-      printClientuptimes();
-      readUptimes = false;
-    }
+    refreshClients();                                   // pull updated information from connected clients
 
     if (readVolts) {
       printClientvolts();
-      readVolts = false;
     }
 
     if (readTemps) {
       printClienttemps();
-      readTemps = false;
     }
 
     if (readLoad) {
       printClientloads();
-      readLoad = false;
     }
   } // end of nextping
 
   #ifdef ESP32
-  for (int xcnt = 0; xcnt < 1000; xcnt++) {
+  for (int xcnt = 0; xcnt < 5000; xcnt++) {
     ArduinoOTA.handle();
     telnet.loop();  // handle telnet events    
     delay(1);
@@ -323,7 +314,7 @@ void readClientArray(uint8_t clientNumber, uint8_t startReg, uint8_t stopReg)
       Wire.requestFrom(clientAddr, eedata_size, (bool) true);                            // request 6 bytes from slave device and then send stop
     else                                                                                 // keep control of bus until we are finished
       Wire.requestFrom(clientAddr, eedata_size, (bool) false);                           // request 6 bytes from slave device and keep control of bus
-    int byteCnt = Wire.readBytes(byteArray, eedata_size);                                              // read i2c bus data into memory
+    Wire.readBytes(byteArray, eedata_size);                                              // read i2c bus data into memory
     // telnet.print("RX bytes: ");
     // telnet.println(byteCnt, DEC);
     // Clients[clientNumber] addArrayData(cmdAddress, byteArray);
@@ -335,17 +326,21 @@ void refreshClients() // read several records from the client to update our in-r
 {
   for (int clientNumber = 0; clientNumber < maxClients; clientNumber++)
   {
+
     if (Clients[clientNumber].clientAddr>0)
     {
-      telnet.print("\nUpdating registers from client ");
-      telnet.println(clientNumber, DEC);
+      Wire.beginTransmission(Clients[clientNumber].clientAddr);                                // ping bus, see if client sends ack
+      uint8_t error = Wire.endTransmission();
 
-      Clients[clientNumber].lastSeen = now();          // record last update time
-
-      readClientArray(clientNumber, 0x21, 0x2e);
-      readClientArray(clientNumber, 0x32, 0x3b);
-      readClientArray(clientNumber, 0x41, 0x49);
-      readClientArray(clientNumber, 0x50, 0x55);
+      if (error == 0)                                                                          // client responded to bus inquiry, proceed
+      {
+        Clients[clientNumber].lastSeen = now();                                                // update timestamp
+        syncClientTime(clientNumber);                                                          // update time on client
+        readClientArray(clientNumber, 0x21, 0x2e);
+        readClientArray(clientNumber, 0x32, 0x3b);
+        readClientArray(clientNumber, 0x41, 0x49);
+        readClientArray(clientNumber, 0x50, 0x55);
+      }
     }
   }
 }
@@ -492,15 +487,12 @@ void syncNTP()
   telnet.println(buff);
 }
 
-void syncClientTime() 
+void syncClientTime(uint8_t clientNumber) 
 {
-  for (int i = 0; i < clientCount; i++)
-  {
-    uint8_t clientAddr = Clients[i].clientAddr;
-    toolbox.i2cWriteUlong(clientAddr, PM_REGISTER_SETEPOCHTIME, now());
-    sprintf(buff, "Wrote timestamp to client 0x%X\n", clientAddr);
-    telnet.println(buff);
-  }
+  uint8_t clientAddr = Clients[clientNumber].clientAddr;
+  toolbox.i2cWriteUlong(clientAddr, PM_REGISTER_SETEPOCHTIME, now());
+  // sprintf(buff, "Wrote timestamp to client 0x%X\n", clientAddr);
+  // telnet.println(buff);
 }
 
 void setupTelnet() 
@@ -566,9 +558,6 @@ void setupTelnet()
       scanI2C();
     } else if (str == "sync") {
       syncNTP();
-    } else if (str == "set") {
-      syncClientTime();
-      lasttimeSync = now();                           // update last sync timestamp
     } else if (str == "cli+") {
       telnet.println("Enabling hotswap buffer.");
       digitalWrite(CLI_ENABLE, HIGH);                 // enable drivers on hotswap buffer
@@ -673,15 +662,15 @@ void printClientconfigs()
     telnet.print(buff);
 
     uint8_t  CONFIG0  = fram[i].getDataByte  (PM_REGISTER_CONFIG0BYTE);
-    float   ampLimit = fram[i].getDataDouble(PM_REGISTER_HIGHCURRENTLIMIT);
-    float   highTemp = fram[i].getDataDouble(PM_REGISTER_HIGHTEMPLIMIT);   
-    float   lowTemp  = fram[i].getDataDouble(PM_REGISTER_LOWTEMPLIMIT);  
-    float   highVolt = fram[i].getDataDouble(PM_REGISTER_HIGHVOLTLIMIT);   
-    float   lowVolt  = fram[i].getDataDouble(PM_REGISTER_LOWVOLTLIMIT);    
-    float   vbusDiv  = fram[i].getDataDouble(PM_REGISTER_CURRENTMVA);   
-    float   vpackDiv = fram[i].getDataDouble(PM_REGISTER_VPACKDIVISOR);    
-    float   vtmpDiv  = fram[i].getDataDouble(PM_REGISTER_THERMDIVISOR);
-    float   mvA      = fram[i].getDataDouble(PM_REGISTER_VBUSDIVISOR);   
+    float    ampLimit = fram[i].getDataDouble(PM_REGISTER_HIGHCURRENTLIMIT);
+    float    highTemp = fram[i].getDataDouble(PM_REGISTER_HIGHTEMPLIMIT);   
+    float    lowTemp  = fram[i].getDataDouble(PM_REGISTER_LOWTEMPLIMIT);  
+    float    highVolt = fram[i].getDataDouble(PM_REGISTER_HIGHVOLTLIMIT);   
+    float    lowVolt  = fram[i].getDataDouble(PM_REGISTER_LOWVOLTLIMIT);    
+    float    vbusDiv  = fram[i].getDataDouble(PM_REGISTER_VBUSDIVISOR);   
+    float    vpackDiv = fram[i].getDataDouble(PM_REGISTER_VPACKDIVISOR);    
+    float    vtmpDiv  = fram[i].getDataDouble(PM_REGISTER_THERMDIVISOR);
+    float    mvA      = fram[i].getDataDouble(PM_REGISTER_CURRENTMVA);   
     
     sprintf(buff, "Register contents of CONFIG0: 0x%x", CONFIG0);
     telnet.println(buff);
@@ -765,7 +754,7 @@ void printClienttemps()
   for (int i=0; i<clientCount; i++)
   {
     ca = Clients[i].clientAddr;
-    ts = fram[i].getTimeStamp(PM_REGISTER_READDEGCT0);
+    ts = Clients[i].lastSeen;
     t0 = fram[i].getDataDouble(PM_REGISTER_READDEGCT0);
     t0H = fram[i].getDataDouble(PM_REGISTER_READT0HIGH);
     t0L = fram[i].getDataDouble(PM_REGISTER_READT0LOW);
@@ -783,6 +772,8 @@ void printClienttemps()
 
     sprintf(buff, "Client %u (0x%x) as of %u: t2: %.2f°C t2 low: %.2f°C t2 high: %.2f°C", i, ca, ts, t2, t2L, t2H);
     telnet.println(buff);
+
+    telnet.println("");
   }
 }
 
@@ -795,7 +786,7 @@ void printClientvolts()
   for (int i=0; i<clientCount; i++)
   {
     ca  = Clients[i].clientAddr;
-    ts  = fram[i].getTimeStamp(PM_REGISTER_READBUSVOLTS);
+    ts  = Clients[i].lastSeen;
     vB  = fram[i].getDataDouble(PM_REGISTER_READBUSVOLTS);
     vP  = fram[i].getDataDouble(PM_REGISTER_READPACKVOLTS);
     vPH = fram[i].getDataDouble(PM_REGISTER_READHIVOLTS);
@@ -814,13 +805,13 @@ void printClientloads()
 
   for (int i=0; i<clientCount; i++)
   {
-    ca     = Clients[i].clientAddr;
-    ts     = fram[i].getTimeStamp(PM_REGISTER_READLOADAMPS);
-    iLoad  = fram[i].getDataDouble(PM_REGISTER_READLOADAMPS);
-    // iH = fram[i].getDataDouble(PM_REGISTER_READ);
+    ca    = Clients[i].clientAddr;
+    ts    = Clients[i].lastSeen;
+    iLoad = fram[i].getDataDouble(PM_REGISTER_READLOADAMPS);
+    iH = fram[i].getDataDouble(PM_REGISTER_READLOADAMPSHI);
     // iL = fram[i].getDataDouble(PM_REGISTER_READLOWVOLTS);
 
-    sprintf(buff, "Client %u (0x%x) as of %u: load amps: %.2fv", i, ca, ts, iLoad);
+    sprintf(buff, "Client %u (0x%x) as of %u: load amps: %.3fa peak: %.3fa", i, ca, ts, iLoad, iH);
     telnet.println(buff);
   }
 }
@@ -833,7 +824,7 @@ void dumpFram()
     while (xx<0x65) 
     {
       sprintf(buff, 
-        "Addr: 0x%X TS: %u Double: %f UINT: %u SINT: %li RAW: %li\n",
+        "Addr: 0x%X TS: %u Double: %f UINT: %u SINT: %i RAW: %i\n",
         xx,
         fram[i].getTimeStamp(xx), 
         fram[i].getDataDouble(xx),
