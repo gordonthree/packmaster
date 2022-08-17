@@ -6,6 +6,12 @@ const uint8_t txBufferSize = 50;
 const uint8_t rxBufferSize = 50;
 const uint8_t adcBufferSize = 4;        // adc1 current, adc2 pack voltage, adc3 bus voltage, adc4 coulumb counter
 
+const uint8_t PM_CLIENTRESET_VOLTS   = 0;
+const uint8_t PM_CLIENTRESET_AMPS    = 1;
+const uint8_t PM_CLIENTRESET_TEMPS   = 2;
+const uint8_t PM_CLIENTRESET_DISCON  = 3;
+const uint8_t PM_CLIENTRESET_COULOMB = 4;
+
 struct I2C_RX_DATA {
   uint8_t cmdAddr               = 0;    // single byte command register
   char cmdData[rxBufferSize] = {};   // room for N bytes of data
