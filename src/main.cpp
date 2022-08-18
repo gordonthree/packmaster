@@ -211,6 +211,8 @@ void setup()
   const bool nextPing = true;
 #endif
 
+uint16_t timeCount = 0;
+
 void loop() 
 {
   #ifdef ESP8266 // use esp8266 specific delay, esp32 delay at the bottom of loop()
@@ -278,6 +280,8 @@ void loop()
     if (readTemps)  printClienttemps();
 
     if (readLoad)   printClientloads();
+
+    timeCount++;
   } // end of nextping
 
   #ifdef ESP32
@@ -364,6 +368,11 @@ void refreshClients() // read several records from the client to update our in-r
       if (error == 0)                                                                          // client responded to bus inquiry, proceed
       {
         Clients[clientNumber].lastSeen = now();                                                // update timestamp
+        if (timeCount>300) 
+        {
+          syncClientTime(clientNumber);                                                         // update clock on clients
+          timeCount = 0;
+        }
         readClientArray(clientNumber, 0x21, 0x2f);
         readClientArray(clientNumber, 0x32, 0x3e);
         readClientArray(clientNumber, 0x41, 0x49);
@@ -797,14 +806,16 @@ void printClientstatus()
   }
   telnet.println("");
 }
+
 void printClienttimes()
 {
+  uint32_t ts = now();
   for (int i=0; i<clientCount; i++)
   {
-    uint8_t  clientAddr = Clients[i].clientAddr;
-    uint32_t ts         = toolbox.i2cReadUlong(clientAddr, PM_REGISTER_CURRENTTIME);
+    uint_fast16_t ca = Clients[i].clientAddr;
+    uint32_t     cts = fram[i].getDataUInt(PM_REGISTER_CURRENTTIME);
 
-    sprintf(buff, "Client #%u (0x%x) %u", i, clientAddr, ts);
+    sprintf(buff, "%u: client #%u (0x%x) current timestaop: %u", ts, i, ca, cts);
     telnet.println(buff);
   }
   telnet.println(" ");
@@ -812,17 +823,17 @@ void printClienttimes()
 
 void printClientuptimes()
 {
+  uint32_t ts = now();
   for (int i=0; i<clientCount; i++)
   {
-    uint8_t  clientAddr = Clients[i].clientAddr;
-    uint32_t ts         = toolbox.i2cReadUlong(clientAddr, PM_REGISTER_UPTIME);
+    uint_fast16_t ca = Clients[i].clientAddr;
+    uint32_t     cts = fram[i].getDataUInt(PM_REGISTER_UPTIME);
 
-    sprintf(buff, "Client #%u (0x%x) uptime %u", i, clientAddr, ts);
+    sprintf(buff, "%u: client #%u (0x%x) uptime: %u", ts, i, ca, cts);
     telnet.println(buff);
   }
   telnet.println(" ");
 }
-
 void printClienttemps()
 {
   float t0, t0H, t0L;
